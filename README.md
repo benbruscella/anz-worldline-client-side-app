@@ -427,6 +427,45 @@ CREATE INDEX idx_transactions_card ON payment_transactions(saved_card_id);
 - ❌ Never log card data to console in production
 - ❌ Never send card data over unencrypted connections
 
+### Saving Cards Without Immediate Payment
+
+The current implementation generates encrypted card data but doesn't automatically save it. To enable saving cards **without requiring a payment**:
+
+**Frontend Changes Needed:**
+1. Add a "Save Card" checkbox to the payment form
+2. After successful encryption, call `/api/save-card` endpoint
+3. Store the `encryptedPaymentRequest` in your database
+
+**Example Implementation:**
+```javascript
+// In PaymentForm.jsx, add state for save card checkbox
+const [saveCard, setSaveCard] = useState(false)
+
+// After successful encryption (after token is created):
+if (saveCard && encryptedPaymentRequest) {
+  try {
+    await fetch('http://localhost:3000/api/save-card', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customerId: session.customerId,
+        encryptedPaymentRequest,
+        maskedCardNumber: maskCardNumber(formData.cardNumber),
+        cardHolder: formData.cardHolder,
+        cardType: getCardType(formData.cardNumber), // Derive from card number
+        expiryDate: formData.expiryDate
+      })
+    })
+    setSuccess(true)
+  } catch (err) {
+    console.error('Failed to save card:', err)
+  }
+}
+```
+
+**Backend Implementation:**
+The `/api/save-card` endpoint code is shown below in the "Backend Implementation" section. You'll need to implement it with a real database connection.
+
 ### Using Saved Cards for Future Payments
 
 When customer wants to pay with saved card:
