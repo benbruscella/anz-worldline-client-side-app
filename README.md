@@ -15,9 +15,16 @@ A complete, production-ready React + Express application for integrating Worldli
 4. [Setup & Configuration](#setup--configuration)
 5. [API Endpoints](#api-endpoints)
 6. [Test Cards](#test-cards)
-7. [Development](#development)
-8. [Production Deployment](#production-deployment)
-9. [Troubleshooting](#troubleshooting)
+7. [Payment Flow](#payment-flow)
+8. [Storing Cards for Future Payments](#storing-cards-for-future-payments)
+9. [3D Secure & Authentication](#3d-secure--authentication)
+10. [PCI DSS Compliance](#pci-dss-compliance)
+11. [Development](#development)
+12. [Production Deployment](#production-deployment)
+13. [Security Best Practices](#security-best-practices)
+14. [Troubleshooting](#troubleshooting)
+15. [Dependencies](#dependencies)
+16. [Resources](#resources)
 
 ---
 
