@@ -475,6 +475,327 @@ When customer wants to pay with saved card:
 3. Send encrypted token to Worldline for payment processing
 4. Worldline decrypts and processes the payment
 
+---
+
+## 3D Secure & Authentication
+
+### What is 3D Secure?
+
+**3D Secure (3DS)** is an authentication protocol that adds an extra verification layer to card payments:
+
+```
+Normal Payment:
+Customer enters card → Payment processed
+
+With 3D Secure:
+Customer enters card → Bank authentication required → Customer verifies in banking app → Payment processed
+```
+
+**Benefits:**
+- Reduces fraud significantly
+- Shifts liability to banks
+- Required by regulations in some regions
+- Better security for high-value transactions
+
+### How It Works in This App
+
+The flow remains PCI-compliant:
+
+```
+1. Customer enters card details (frontend only)
+2. SDK encrypts the card (frontend)
+3. Encrypted token sent to backend
+4. Backend forwards encrypted token to Worldline
+5. Worldline processes payment
+6. If 3DS required: Worldline returns redirect URL
+7. Customer redirected to bank authentication
+8. After authentication: Payment completes
+9. Webhook confirms payment status
+```
+
+### Implementing 3D Secure
+
+**Backend Implementation:**
+
+```javascript
+// POST /api/process-payment - Process encrypted card payment with 3DS support
+app.post('/api/process-payment', async (req, res) => {
+  const {
+    encryptedPaymentRequest,  // Already encrypted - safe to handle
+    customerId,
+    amount,
+    currency
+  } = req.body
+
+  try {
+    // Send encrypted token to Worldline
+    // Server never decrypts it - stays secure
+    const paymentResponse = await client.payments.createPayment(
+      WORLDLINE_PSPID,
+      {
+        encryptedPaymentRequest,
+        customerId,
+        amountOfMoney: {
+          amount,
+          currencyCode: currency
+        }
+      }
+    )
+
+    // Check if payment succeeded
+    if (paymentResponse.isSuccess) {
+      // Payment successful
+      res.json({
+        success: true,
+        paymentId: paymentResponse.body.id,
+        status: paymentResponse.body.status
+      })
+    }
+    // Check if 3DS authentication required
+    else if (paymentResponse.status === 402) {
+      // 3DS Challenge - user must authenticate with bank
+      res.json({
+        requires3DS: true,
+        redirectUrl: paymentResponse.body.authentication.redirectUrl,
+        transactionId: paymentResponse.body.id,
+        message: 'Please complete authentication with your bank'
+      })
+    }
+    else {
+      res.status(400).json({
+        error: 'Payment failed',
+        details: paymentResponse.body
+      })
+    }
+  } catch (error) {
+    console.error('Payment processing error:', error)
+    res.status(500).json({
+      error: 'Payment processing failed',
+      message: error.message
+    })
+  }
+})
+
+// POST /api/webhook - Worldline sends final payment status
+app.post('/api/webhook', async (req, res) => {
+  const { paymentId, status, customerId } = req.body
+
+  try {
+    // Verify signature (important for security!)
+    // Implementation depends on Worldline webhook format
+
+    // Update payment status in database
+    await db.query(
+      'UPDATE payment_transactions SET transaction_status = $1 WHERE payment_id = $2',
+      [status, paymentId]
+    )
+
+    // Send confirmation email, etc
+    console.log(`Payment ${paymentId} completed with status: ${status}`)
+
+    res.json({ received: true })
+  } catch (error) {
+    console.error('Webhook error:', error)
+    res.status(500).json({ error: 'Webhook processing failed' })
+  }
+})
+```
+
+**Frontend Implementation:**
+
+```javascript
+// In PaymentForm.jsx, after encryption:
+
+const handlePaymentSubmit = async (encryptedPaymentRequest) => {
+  try {
+    // Send encrypted token to backend
+    const paymentResponse = await fetch('http://localhost:3000/api/process-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        encryptedPaymentRequest,
+        customerId: session.customerId,
+        amount: formData.amount,
+        currency: paymentContext.currencyCode
+      })
+    })
+
+    const result = await paymentResponse.json()
+
+    if (result.requires3DS) {
+      // Redirect user to bank authentication page
+      console.log('Redirecting to 3D Secure authentication...')
+      window.location.href = result.redirectUrl
+    }
+    else if (result.success) {
+      // Payment succeeded
+      setSuccess(true)
+      console.log('Payment successful:', result.paymentId)
+    }
+    else {
+      setFormError(result.error || 'Payment failed')
+    }
+  } catch (error) {
+    setFormError('Payment processing failed: ' + error.message)
+  }
+}
+```
+
+### 3D Secure Flow Diagram
+
+```
+User Form
+    ↓
+Frontend encrypts card data (SDK)
+    ↓
+Backend receives encrypted token (encrypted, server never sees card)
+    ↓
+Backend sends to Worldline
+    ↓
+Worldline checks if 3DS required
+    ├─ No 3DS → Payment approved → User sees success
+    └─ Yes 3DS → Return redirect URL → User redirected to bank
+                        ↓
+                  User authenticates with bank
+                        ↓
+                  Returns to your return URL
+                        ↓
+                  Worldline sends webhook with status
+                        ↓
+                  Backend updates database
+                        ↓
+                  User sees confirmation
+```
+
+---
+
+## PCI DSS Compliance
+
+### What is PCI DSS?
+
+**Payment Card Industry Data Security Standard** - Regulations requiring secure handling of payment card data.
+
+**Compliance Levels:**
+- Level 1: < $6M transactions/year (strictest)
+- Level 2: $6M-50M transactions/year
+- Level 3: $50M-300M transactions/year
+- Level 4: > $300M transactions/year (least strict)
+
+### How This App Stays Compliant
+
+**Your server NEVER touches unencrypted card data:**
+
+```
+✅ SAFE - Server processes these:
+- encryptedPaymentRequest (encrypted blob - unreadable)
+- customerId (Worldline ID - not sensitive)
+- clientSessionId (session ID - not sensitive)
+- amount (transaction amount - not sensitive)
+- maskedCardNumber (****1111 - safe)
+
+❌ UNSAFE - Server never handles these:
+- Full card number
+- CVV/CVC codes
+- Expiry dates (unencrypted)
+- Any unencrypted card data
+```
+
+### Compliance Architecture
+
+```
+Frontend (Browser)
+├─ Worldline SDK
+├─ Encrypts card data with Worldline's public key
+└─ Only encrypted token leaves browser
+
+    ↓ (encrypted, unreadable)
+
+Backend Server
+├─ Never decrypts
+├─ Forwards encrypted token to Worldline
+├─ Stores encrypted token in database
+└─ Server doesn't handle sensitive card data
+
+    ↓ (encrypted still)
+
+Worldline (PCI-certified)
+├─ Decrypts token (they have the key)
+├─ Processes payment
+└─ Handles all sensitive data securely
+```
+
+### PCI Compliance Checklist
+
+**✅ Doing Right:**
+- Card data encrypted before leaving frontend
+- Server never stores unencrypted card data
+- Encrypted tokens safe to store
+- API credentials in .env (not exposed)
+- HTTPS used for all communications
+- Sensitive logs not written to disk
+
+**⚠️ Additional for Production:**
+- Use HTTPS only (no HTTP)
+- Implement rate limiting on payment endpoints
+- Add request validation and sanitization
+- Log payment attempts (without card data)
+- Implement webhook signature verification
+- Use strong authentication (not just user ID)
+- Regular security audits
+- Penetration testing before launch
+- Firewall rules for database access
+- Data retention policies (delete old encrypted tokens)
+
+### Code: PCI-Compliant Payment Endpoint
+
+```javascript
+// ✅ PCI COMPLIANT - This is safe
+app.post('/api/process-payment', async (req, res) => {
+  const {
+    encryptedPaymentRequest,  // ✅ Encrypted - safe
+    customerId,               // ✅ ID - safe
+    amount,                   // ✅ Amount - safe
+    currency                  // ✅ Currency - safe
+  } = req.body
+
+  // Server never opens encryptedPaymentRequest
+  // Just forwards it sealed to Worldline
+  const payment = await client.payments.createPayment(
+    WORLDLINE_PSPID,
+    { encryptedPaymentRequest, customerId, amountOfMoney: { amount, currencyCode: currency } }
+  )
+
+  res.json({ success: payment.isSuccess })
+})
+
+// ❌ NOT PCI COMPLIANT - Never do this
+app.post('/api/bad-endpoint', async (req, res) => {
+  const { cardNumber, cvv, expiryDate } = req.body  // ❌ DANGEROUS!
+  // Now your server has unencrypted card data
+  // This violates PCI DSS
+  // Can result in fines up to $100,000+ per incident
+})
+```
+
+### Compliance Verification
+
+To verify your compliance:
+
+1. **Use Worldline's hosted encryption** ✅ (this app does)
+2. **Never log card data** ✅ (this app doesn't)
+3. **Use HTTPS only** ⚠️ (required for production)
+4. **Validate input data** ⚠️ (add validation layer)
+5. **Monitor access logs** ⚠️ (implement logging)
+6. **Annual security review** ⚠️ (schedule with security firm)
+
+---
+
+## Worldline Resources
+
+- [Official 3D Secure Integration Guide](https://developer.worldline.com/)
+- [PCI DSS Compliance](https://www.pcisecuritystandards.org/)
+- [Worldline Security Documentation](https://docs.anzworldline-solutions.com.au/)
+
 ### Example: Backend Implementation
 
 ```javascript
