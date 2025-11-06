@@ -343,6 +343,186 @@ npm run preview             # Preview production build
 
 ---
 
+## Storing Cards for Future Payments
+
+To enable customers to make payments with saved cards, you'll need to store specific data in your database.
+
+### What to Store
+
+**Essential Data:**
+1. **Encrypted Payment Token** - `encryptedPaymentRequest` from [PaymentForm.jsx:172](src/components/PaymentForm.jsx#L172)
+   - This is the encrypted card data from Worldline SDK
+   - Safe to store - already encrypted
+   - Use for subsequent payments without re-entering card details
+
+2. **Customer Identifier** - `customerId` from [server.js:61](server.js#L61)
+   - Links the card to a customer in Worldline's system
+   - Obtained from session creation
+
+3. **Card Metadata:**
+   - `maskedCardNumber` - Last 4 digits for display (from [PaymentForm.jsx:173](src/components/PaymentForm.jsx#L173))
+   - `cardHolder` - Name on the card
+   - `cardType` - Visa, Mastercard, Amex, etc. (derived from card number)
+   - `expiryDate` - For renewal reminders or validation
+
+4. **Worldline References:**
+   - `clientSessionId` - From session creation (from [server.js:60](server.js#L60))
+   - `paymentProductId` - Set to `1` for card payments (from [PaymentForm.jsx:128](src/components/PaymentForm.jsx#L128))
+
+5. **Transaction Metadata:**
+   - `timestamp` - When card was saved (from [PaymentForm.jsx:177](src/components/PaymentForm.jsx#L177))
+   - `amount` - Original transaction amount
+   - `currency` - Currency code (e.g., 'AUD' from [PaymentForm.jsx:176](src/components/PaymentForm.jsx#L176))
+
+### Database Schema Example
+
+```sql
+-- Saved payment cards
+CREATE TABLE saved_cards (
+  id UUID PRIMARY KEY,
+  customer_id VARCHAR(255) NOT NULL,
+  encrypted_payment_request TEXT NOT NULL,
+  masked_card_number VARCHAR(20),
+  card_holder VARCHAR(255),
+  card_type VARCHAR(50),
+  expiry_date VARCHAR(5),
+  client_session_id VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  is_default BOOLEAN DEFAULT FALSE,
+  UNIQUE(customer_id, masked_card_number)
+);
+
+-- Payment transactions
+CREATE TABLE payment_transactions (
+  id UUID PRIMARY KEY,
+  saved_card_id UUID REFERENCES saved_cards(id),
+  customer_id VARCHAR(255),
+  amount DECIMAL(10, 2),
+  currency VARCHAR(3),
+  transaction_status VARCHAR(50),
+  transaction_reference VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for better query performance
+CREATE INDEX idx_saved_cards_customer ON saved_cards(customer_id);
+CREATE INDEX idx_transactions_customer ON payment_transactions(customer_id);
+CREATE INDEX idx_transactions_card ON payment_transactions(saved_card_id);
+```
+
+### Security Considerations
+
+**Do:**
+- ✅ Store `encryptedPaymentRequest` - it's already encrypted by Worldline SDK
+- ✅ Encrypt the database column at rest using your database encryption
+- ✅ Store only masked card numbers (last 4 digits visible)
+- ✅ Store metadata for user display and validation
+- ✅ Use HTTPS for all API communication
+- ✅ Implement proper access controls and authentication
+
+**Don't:**
+- ❌ Never store unencrypted card numbers
+- ❌ Never store CVV numbers (not needed for subsequent payments)
+- ❌ Never store full expiry dates unencrypted
+- ❌ Never log card data to console in production
+- ❌ Never send card data over unencrypted connections
+
+### Using Saved Cards for Future Payments
+
+When customer wants to pay with saved card:
+
+1. Retrieve `encryptedPaymentRequest` from database
+2. Get fresh `clientSessionId` from backend (call `/api/session`)
+3. Send encrypted token to Worldline for payment processing
+4. Worldline decrypts and processes the payment
+
+### Example: Backend Implementation
+
+```javascript
+// POST /api/save-card - Save encrypted card after initial payment
+app.post('/api/save-card', async (req, res) => {
+  const {
+    customerId,
+    encryptedPaymentRequest,
+    maskedCardNumber,
+    cardHolder,
+    cardType,
+    expiryDate,
+    clientSessionId
+  } = req.body;
+
+  try {
+    // Store in database
+    const savedCard = await db.query(
+      `INSERT INTO saved_cards (
+        customer_id, encrypted_payment_request, masked_card_number,
+        card_holder, card_type, expiry_date, client_session_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [
+        customerId,
+        encryptedPaymentRequest,
+        maskedCardNumber,
+        cardHolder,
+        cardType,
+        expiryDate,
+        clientSessionId
+      ]
+    );
+
+    res.json({ success: true, cardId: savedCard.rows[0].id });
+  } catch (error) {
+    console.error('Error saving card:', error);
+    res.status(500).json({ error: 'Failed to save card' });
+  }
+});
+
+// POST /api/pay-with-saved-card - Use saved card for payment
+app.post('/api/pay-with-saved-card', async (req, res) => {
+  const { savedCardId, customerId, amount, currency } = req.body;
+
+  try {
+    // Retrieve saved card
+    const result = await db.query(
+      'SELECT encrypted_payment_request FROM saved_cards WHERE id = $1',
+      [savedCardId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Card not found' });
+    }
+
+    const { encrypted_payment_request } = result.rows[0];
+
+    // Create payment with encrypted token
+    const sdkResponse = await client.payments.createPayment(
+      WORLDLINE_PSPID,
+      {
+        encryptedPaymentRequest: encrypted_payment_request,
+        customerId: customerId,
+        amountOfMoney: {
+          amount: amount,
+          currencyCode: currency
+        }
+      }
+    );
+
+    // Store transaction record
+    await db.query(
+      `INSERT INTO payment_transactions (saved_card_id, customer_id, amount, currency, transaction_status)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [savedCardId, customerId, amount, currency, sdkResponse.status]
+    );
+
+    res.json({ success: true, paymentId: sdkResponse.id });
+  } catch (error) {
+    console.error('Payment error:', error);
+    res.status(500).json({ error: 'Payment failed' });
+  }
+});
+```
+
+---
+
 ## Security Best Practices
 
 ### ✅ What This App Does Right
