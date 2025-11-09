@@ -1,6 +1,6 @@
 /**
- * Worldline Payment Backend Server
- * Creates Worldline Client Sessions for frontend payment encryption
+ * ANZ Worldline Payment Backend Server
+ * Creates ANZ Worldline Client Sessions for frontend payment encryption
  * Uses official OnlinePayments SDK for secure authentication
  *
  * Run: npm run server
@@ -30,10 +30,10 @@ const corsOptions = CORS_ORIGIN
 app.use(cors(corsOptions))
 app.use(express.json())
 
-const WORLDLINE_PSPID = process.env.WORLDLINE_PSPID
-const WORLDLINE_API_KEY_ID = process.env.WORLDLINE_API_KEY_ID
-const WORLDLINE_API_SECRET_KEY = process.env.WORLDLINE_API_SECRET_KEY
-const WORLDLINE_API_URL = process.env.WORLDLINE_API_URL || 'https://payment.preprod.anzworldline-solutions.com.au'
+const ANZ_WORLDLINE_PSPID = process.env.ANZ_WORLDLINE_PSPID
+const ANZ_WORLDLINE_API_KEY_ID = process.env.ANZ_WORLDLINE_API_KEY_ID
+const ANZ_WORLDLINE_API_SECRET_KEY = process.env.ANZ_WORLDLINE_API_SECRET_KEY
+const ANZ_WORLDLINE_API_URL = process.env.ANZ_WORLDLINE_API_URL || 'https://payment.preprod.anzworldline-solutions.com.au'
 
 // Parse API URL to extract host, scheme, and port
 function parseApiUrl(urlString) {
@@ -45,42 +45,42 @@ function parseApiUrl(urlString) {
       port: url.port ? parseInt(url.port) : (url.protocol === 'https:' ? 443 : 80)
     }
   } catch (error) {
-    console.error('Invalid WORLDLINE_API_URL:', urlString)
-    throw new Error('Invalid WORLDLINE_API_URL format')
+    console.error('Invalid ANZ_WORLDLINE_API_URL:', urlString)
+    throw new Error('Invalid ANZ_WORLDLINE_API_URL format')
   }
 }
 
-const apiUrlConfig = parseApiUrl(WORLDLINE_API_URL)
+const apiUrlConfig = parseApiUrl(ANZ_WORLDLINE_API_URL)
 
 // Initialize SDK client once at startup
 const client = init({
-  apiKeyId: WORLDLINE_API_KEY_ID,
-  secretApiKey: WORLDLINE_API_SECRET_KEY,
+  apiKeyId: ANZ_WORLDLINE_API_KEY_ID,
+  secretApiKey: ANZ_WORLDLINE_API_SECRET_KEY,
   host: apiUrlConfig.host,
   scheme: apiUrlConfig.scheme,
   port: apiUrlConfig.port,
-  integrator: 'WorldlinePaymentApp/1.0',
+  integrator: 'ANZWorldlinePaymentApp/1.0',
   enableLogging: true
 })
 
 // ============================================================================
-// POST /api/session - Create Worldline Client Session
+// POST /api/session - Create ANZ Worldline Client Session
 // ============================================================================
 
 app.post('/api/session', async (req, res) => {
   try {
-    if (!WORLDLINE_PSPID || !WORLDLINE_API_KEY_ID || !WORLDLINE_API_SECRET_KEY) {
+    if (!ANZ_WORLDLINE_PSPID || !ANZ_WORLDLINE_API_KEY_ID || !ANZ_WORLDLINE_API_SECRET_KEY) {
       return res.status(500).json({
         error: 'Missing credentials',
-        message: 'WORLDLINE_PSPID, WORLDLINE_API_KEY_ID, or WORLDLINE_API_SECRET_KEY not configured in .env.local'
+        message: 'ANZ_WORLDLINE_PSPID, ANZ_WORLDLINE_API_KEY_ID, or ANZ_WORLDLINE_API_SECRET_KEY not configured in .env.local'
       })
     }
 
-    console.log(`Creating session for PSPID: ${WORLDLINE_PSPID}`)
+    console.log(`Creating session for PSPID: ${ANZ_WORLDLINE_PSPID}`)
     console.log(`Using API endpoint: ${apiUrlConfig.scheme}://${apiUrlConfig.host}:${apiUrlConfig.port}`)
 
     // Create session using SDK
-    const sdkResponse = await client.sessions.createSession(WORLDLINE_PSPID, {})
+    const sdkResponse = await client.sessions.createSession(ANZ_WORLDLINE_PSPID, {})
 
     console.log('SDK Response:', sdkResponse)
 
@@ -137,7 +137,7 @@ app.post('/api/process-payment', async (req, res) => {
     // Create payment using SDK
     // The encryptedPaymentRequest should be passed as encryptedCustomerInput
     const paymentResponse = await client.payments.createPayment(
-      WORLDLINE_PSPID,
+      ANZ_WORLDLINE_PSPID,
       {
         encryptedCustomerInput: encryptedPaymentRequest,
         order: {
@@ -214,9 +214,9 @@ app.get('/api/payment-status/:paymentId', async (req, res) => {
 
     console.log(`Checking payment status: ${paymentId}`)
 
-    // Get payment status from Worldline
+    // Get payment status from ANZ Worldline
     const paymentResponse = await client.payments.getPayment(
-      WORLDLINE_PSPID,
+      ANZ_WORLDLINE_PSPID,
       paymentId
     )
 
@@ -266,7 +266,7 @@ app.get('/api/payment-return', async (req, res) => {
 
     // Get final payment status after 3DS authentication
     const paymentResponse = await client.payments.getPayment(
-      WORLDLINE_PSPID,
+      ANZ_WORLDLINE_PSPID,
       paymentId
     )
 
@@ -338,7 +338,7 @@ app.post('/api/webhook', async (req, res) => {
 const PORT = process.env.SERVER_PORT || 3000
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Server running on http://localhost:${PORT}`)
-  console.log(`   POST /api/session - Create Worldline Client Session\n`)
+  console.log(`\n🚀 ANZ Worldline Payment Server running on http://localhost:${PORT}`)
+  console.log(`   POST /api/session - Create ANZ Worldline Client Session\n`)
 })
 

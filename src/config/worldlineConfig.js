@@ -1,22 +1,4 @@
 /**
- * Worldline SDK Configuration
- * This file configures the SDK with environment variables
- */
-
-export const worldlineConfig = {
-  clientSessionId: import.meta.env.VITE_CLIENT_SESSION_ID || 'test-session-' + Date.now(),
-  customerId: import.meta.env.VITE_CUSTOMER_ID || 'test-customer-' + Date.now(),
-  clientApiUrl: import.meta.env.VITE_CLIENT_API_URL || 'https://clientapi.worldline.com',
-  assetUrl: import.meta.env.VITE_ASSET_URL || 'https://assets.worldline.com',
-  testMode: import.meta.env.VITE_TEST_MODE === 'true',
-  paymentContext: {
-    countryCode: import.meta.env.VITE_COUNTRY_CODE || 'AU',
-    currencyCode: import.meta.env.VITE_CURRENCY_CODE || 'AUD',
-    amount: parseInt(import.meta.env.VITE_AMOUNT || '10000'),
-  },
-}
-
-/**
  * Test cards for different payment methods
  * Use these in test mode to verify integration
  *
@@ -75,9 +57,3 @@ export function getTestCard(name) {
   return testCards.find(card => card.name === name)
 }
 
-/**
- * Get all test card names for selection
- */
-export function getTestCardNames() {
-  return testCards.map(card => card.name)
-}

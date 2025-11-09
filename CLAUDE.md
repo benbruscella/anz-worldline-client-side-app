@@ -4,9 +4,9 @@ This document provides context for Claude Code and other AI assistants working o
 
 ## Project Overview
 
-**⚠️ ANZ Worldline Payment Integration App** - A production-ready React + Express application for integrating **ANZ Worldline** Online Payments SDK with real payment encryption and PCI DSS compliance.
+**⚠️ ANZ Worldline Payment Integration App** - A production-ready React + Express application for integrating **ANZ Worldline** Online Payments SDK with real payment encryption and full PCI DSS compliance.
 
-**IMPORTANT:** This app is built for **ANZ Worldline ONLY** (Australia/New Zealand region), NOT Worldline Global. All endpoints, credentials, and configurations are specific to ANZ Worldline.
+**CRITICAL:** This app is built for **ANZ Worldline ONLY** (Australia/New Zealand region), NOT global Worldline. All endpoints, credentials, environment variables, and configurations are specific to ANZ Worldline. Do NOT attempt to use global Worldline credentials or endpoints with this app.
 
 **Purpose:** Provide a secure, end-to-end payment flow that never exposes unencrypted card data on the server.
 
@@ -135,15 +135,17 @@ All in `src/config/worldlineConfig.js`:
 
 **All use:** Expiry `12/25`, CVV `123`, Holder `TEST USER`
 
-### Environment
+### Environment Variables
 ```bash
 # .env.local for development
-WORLDLINE_PSPID=your-pspid
-WORLDLINE_API_KEY_ID=your-key-id
-WORLDLINE_API_SECRET_KEY=your-secret-key
+ANZ_WORLDLINE_PSPID=your-pspid
+ANZ_WORLDLINE_API_KEY_ID=your-key-id
+ANZ_WORLDLINE_API_SECRET_KEY=your-secret-key
+ANZ_WORLDLINE_API_URL=https://payment.preprod.anzworldline-solutions.com.au
 VITE_API_URL=http://localhost:3000/api
-VITE_TEST_MODE=true
 ```
+
+**Note:** Environment variables MUST use `ANZ_WORLDLINE_*` prefix. Using `WORLDLINE_*` will fail.
 
 ## PCI Compliance
 

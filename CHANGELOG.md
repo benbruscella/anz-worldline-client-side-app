@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Environment Variables Refactoring ✅ COMPLETED
+- **Renamed for clarity:** All `WORLDLINE_*` variables now `ANZ_WORLDLINE_*`
+  - `WORLDLINE_PSPID` → `ANZ_WORLDLINE_PSPID`
+  - `WORLDLINE_API_KEY_ID` → `ANZ_WORLDLINE_API_KEY_ID`
+  - `WORLDLINE_API_SECRET_KEY` → `ANZ_WORLDLINE_API_SECRET_KEY`
+  - `WORLDLINE_API_URL` → `ANZ_WORLDLINE_API_URL`
+- **Reason:** Explicitly indicate this is ANZ Worldline ONLY (Australia/New Zealand), NOT global Worldline
+- **Impact:** All `.env.local` files must be updated with new variable names
+- **Documentation:** Updated all examples, comments, and error messages
+
 ### Phase 1: Backend Payment Processing ✅ COMPLETED
 
 #### Added

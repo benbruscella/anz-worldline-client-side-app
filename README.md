@@ -1,11 +1,12 @@
-# Worldline Payment Integration App
+# ANZ Worldline Payment Integration App
 
-A complete, production-ready React + Express application for integrating Worldline Online Payments SDK with real payment encryption.
+A complete, production-ready React + Express application for integrating **ANZ Worldline** Online Payments SDK with real payment encryption and PCI DSS compliance.
 
 **Frontend:** React 18 + Vite + Tailwind CSS
 **Backend:** Node.js + Express
-**SDK:** Worldline Online Payments JavaScript SDK
-**Status:** ✅ Real SDK integration with backend session creation
+**SDK:** ANZ Worldline Online Payments JavaScript SDK (Server & Client)
+**Status:** ✅ Full end-to-end payment processing with 3D Secure support
+**Region:** Australia & New Zealand only (ANZ Worldline, NOT global Worldline)
 
 ## Table of Contents
 
@@ -37,11 +38,11 @@ npm install
 
 # 2. Configure
 cp .env.local.example .env.local
-# Edit .env.local with your Worldline credentials:
-#   - WORLDLINE_PSPID (your merchant ID)
-#   - WORLDLINE_API_KEY_ID
-#   - WORLDLINE_API_SECRET_KEY
-#   - WORLDLINE_API_URL (sandbox or production)
+# Edit .env.local with your ANZ Worldline credentials:
+#   - ANZ_WORLDLINE_PSPID (your merchant ID)
+#   - ANZ_WORLDLINE_API_KEY_ID
+#   - ANZ_WORLDLINE_API_SECRET_KEY
+#   - ANZ_WORLDLINE_API_URL (sandbox or production)
 
 # 3. Start backend (Terminal 1)
 npm run server
@@ -147,10 +148,12 @@ package.json                    # Dependencies
 
 ## Setup & Configuration
 
-### Get Your Credentials
+### Get Your ANZ Worldline Credentials
+
+⚠️ **IMPORTANT:** This app is for **ANZ Worldline ONLY** (Australia/New Zealand). Do NOT use credentials from global Worldline.
 
 1. **PSPID (Merchant ID)**
-   - Login to https://merchant.worldline.com
+   - Login to ANZ Worldline merchant dashboard
    - Settings → Merchant Info
    - Copy your PSPID
 
@@ -160,18 +163,19 @@ package.json                    # Dependencies
    - Ensure it has session creation permissions
 
 3. **API URL**
-   - Sandbox: `https://api.sandbox.worldline.com`
-   - Production: `https://api.worldline.com`
+   - Sandbox: `https://payment.preprod.anzworldline-solutions.com.au`
+   - Production: `https://payment.anzworldline-solutions.com.au`
 
 ### Configure Your Project
 
 Create `.env.local` (copy from `.env.local.example`):
 
 ```env
-# Backend (from Worldline merchant account)
-WORLDLINE_PSPID=your-pspid-here
-WORLDLINE_API_KEY=your-api-key-here
-WORLDLINE_API_URL=https://api.sandbox.worldline.com
+# Backend (from ANZ Worldline merchant account)
+ANZ_WORLDLINE_PSPID=your-pspid-here
+ANZ_WORLDLINE_API_KEY_ID=your-api-key-id-here
+ANZ_WORLDLINE_API_SECRET_KEY=your-api-secret-key-here
+ANZ_WORLDLINE_API_URL=https://payment.preprod.anzworldline-solutions.com.au
 SERVER_PORT=3000
 
 # Frontend
@@ -179,7 +183,6 @@ VITE_COUNTRY_CODE=AU
 VITE_CURRENCY_CODE=AUD
 VITE_AMOUNT=10000
 VITE_API_URL=http://localhost:3000/api
-VITE_TEST_MODE=true
 ```
 
 ### Demo Mode

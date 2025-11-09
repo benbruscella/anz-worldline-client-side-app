@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 
-export default function PaymentStatus({ onClose }) {
+export default function PaymentStatus() {
   const [status, setStatus] = useState(null)
-  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     // Check if returning from 3D Secure
@@ -115,7 +114,6 @@ export default function PaymentStatus({ onClose }) {
               sessionStorage.removeItem('lastPaymentId')
               sessionStorage.removeItem('lastPaymentStatus')
               setStatus(null)
-              if (onClose) onClose()
             }}
             className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md transition duration-200"
           >

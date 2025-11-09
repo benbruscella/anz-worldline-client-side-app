@@ -41,7 +41,7 @@ function App() {
       </div>
 
       {/* Payment Status Modal */}
-      <PaymentStatus onClose={() => {}} />
+      <PaymentStatus />
     </div>
   )
 }

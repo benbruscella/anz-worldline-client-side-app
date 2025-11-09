@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { PaymentRequest } from 'onlinepayments-sdk-client-js'
 import { useWorldlineSession } from '../hooks/useWorldlineSession'
 import { testCards, getTestCard } from '../config/worldlineConfig'
@@ -271,12 +271,7 @@ export default function PaymentForm({ onTokenGenerated }) {
         throw new Error(errorMsg)
       }
     } catch (err) {
-      console.error('Payment error:', err)
-      console.error('Error type:', typeof err)
-      console.error('Error keys:', err ? Object.keys(err) : 'null')
-      console.error('Error stack:', err?.stack)
-      console.error('Error message:', err?.message)
-      console.error('Error toString:', err?.toString())
+      console.error('❌ Payment processing error:', err?.message || err)
       const errorMsg = err?.message || (Array.isArray(err) ? err.join(', ') : err?.toString?.() || 'Failed to process payment')
       setFormError(errorMsg)
     } finally {
