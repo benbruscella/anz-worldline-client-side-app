@@ -7,7 +7,7 @@ export default function PaymentForm({ onTokenGenerated }) {
   const paymentContext = {
     countryCode: import.meta.env.VITE_COUNTRY_CODE || 'AU',
     currencyCode: import.meta.env.VITE_CURRENCY_CODE || 'AUD',
-    amount: parseInt(import.meta.env.VITE_AMOUNT || '10000'),
+    amount: parseInt(import.meta.env.VITE_AMOUNT || '6767'),
   }
 
   // Use the custom hook to initialize Worldline session
@@ -197,12 +197,14 @@ export default function PaymentForm({ onTokenGenerated }) {
         throw new Error(`Payment encryption failed: ${errorMsg}. Please ensure your session is properly initialized and the SDK is loaded.`)
       }
 
-      // Create token response
+      // Create token response with clear currency formatting
+      const formattedAmount = `${paymentContext.currencyCode} $${parseFloat(formData.amount).toFixed(2)}`
       const token = {
         encryptedPaymentRequest: encryptedPaymentRequest,
+        paymentAmount: formattedAmount, // More readable: "AUD $777.99"
         cardNumber: maskCardNumber(formData.cardNumber),
         cardHolder: formData.cardHolder,
-        amount: formData.amount,
+        amountInCents: Math.round(parseFloat(formData.amount) * 100),
         currency: paymentContext.currencyCode,
         timestamp: new Date().toISOString(),
         paymentProductCount: paymentProducts.length,
@@ -212,19 +214,61 @@ export default function PaymentForm({ onTokenGenerated }) {
       console.log('Generated Token:', token)
       onTokenGenerated(JSON.stringify(token, null, 2))
 
-      setSuccess(true)
-      setTimeout(() => setSuccess(false), 4000)
+      // Submit encrypted token to backend for payment processing
+      console.log('Submitting encrypted token to backend...')
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+      const paymentPayload = {
+        encryptedPaymentRequest: encryptedPaymentRequest,
+        customerId: session.customerId,
+        amount: token.amountInCents,
+        currency: token.currency,
+        cardHolder: formData.cardHolder
+      }
+      console.log('Payment payload:', paymentPayload)
 
-      // Reset form
-      if (useTestCard) {
-        const card = selectedTestCard
-        setFormData({
-          cardNumber: card.number,
-          expiryDate: card.expiry,
-          cvv: card.cvv,
-          cardHolder: card.holder,
-          amount: formData.amount,
-        })
+      const paymentResponse = await fetch(`${apiUrl}/process-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(paymentPayload)
+      })
+
+      const paymentResult = await paymentResponse.json()
+      console.log('Payment Response:', paymentResult)
+
+      // Handle payment response
+      if (paymentResponse.status === 402 && paymentResult.requires3DS) {
+        // 3D Secure required - redirect to bank
+        console.log('⚠️ 3D Secure authentication required')
+        console.log('Redirecting to:', paymentResult.redirectUrl)
+        // Store payment ID in session for reference
+        sessionStorage.setItem('pendingPaymentId', paymentResult.paymentId)
+        // Redirect to bank for authentication
+        window.location.href = paymentResult.redirectUrl
+      } else if (paymentResponse.ok && paymentResult.success) {
+        // Payment successful
+        console.log('✅ Payment successful:', paymentResult.paymentId)
+        setSuccess(true)
+        sessionStorage.setItem('lastPaymentId', paymentResult.paymentId)
+        sessionStorage.setItem('lastPaymentStatus', paymentResult.status)
+        sessionStorage.setItem('showPaymentStatus', 'true')
+        setTimeout(() => setSuccess(false), 4000)
+
+        // Reset form
+        if (useTestCard) {
+          const card = selectedTestCard
+          setFormData({
+            cardNumber: card.number,
+            expiryDate: card.expiry,
+            cvv: card.cvv,
+            cardHolder: card.holder,
+            amount: formData.amount,
+          })
+        }
+      } else {
+        // Payment failed
+        const errorMsg = paymentResult.error || 'Payment processing failed'
+        console.error('❌ Payment failed:', errorMsg)
+        throw new Error(errorMsg)
       }
     } catch (err) {
       console.error('Payment error:', err)
@@ -421,7 +465,10 @@ export default function PaymentForm({ onTokenGenerated }) {
         {/* Success Message */}
         {success && (
           <div className="bg-green-50 border border-green-200 rounded-md p-3 text-green-700 text-sm">
-            ✓ Payment request encrypted and token generated successfully!
+            <p className="font-semibold">✓ Payment processed successfully!</p>
+            <p className="text-xs mt-1">
+              Payment ID: <span className="font-mono">{sessionStorage.getItem('lastPaymentId')}</span>
+            </p>
           </div>
         )}
 

@@ -4,9 +4,23 @@ This document provides context for Claude Code and other AI assistants working o
 
 ## Project Overview
 
-**ANZ Worldline Payment Integration App** - A production-ready React + Express application for integrating Worldline Online Payments SDK with real payment encryption and PCI DSS compliance.
+**⚠️ ANZ Worldline Payment Integration App** - A production-ready React + Express application for integrating **ANZ Worldline** Online Payments SDK with real payment encryption and PCI DSS compliance.
+
+**IMPORTANT:** This app is built for **ANZ Worldline ONLY** (Australia/New Zealand region), NOT Worldline Global. All endpoints, credentials, and configurations are specific to ANZ Worldline.
 
 **Purpose:** Provide a secure, end-to-end payment flow that never exposes unencrypted card data on the server.
+
+## ANZ Worldline vs Worldline Global
+
+This project is **exclusive to ANZ Worldline**:
+- **Endpoint:** `https://payment.preprod.anzworldline-solutions.com.au` (sandbox)
+- **Endpoint:** `https://payment.anzworldline-solutions.com.au` (production)
+- **SDK Version:** Server `onlinepayments-sdk-nodejs` v6.3.1, Client latest from CDN
+- **Merchant Setup:** Requires ANZ Worldline merchant account
+- **API Keys:** From ANZ Worldline Dashboard only
+- **Supported Regions:** Australia, New Zealand
+
+⚠️ **DO NOT** use code or configurations from Worldline Global projects - they will not work with ANZ Worldline. The API structure, endpoints, and authentication differ significantly.
 
 ## Key Architecture Decisions
 
@@ -88,11 +102,14 @@ Worldline (PCI-certified)
 
 ## Common Tasks for Claude
 
-### Understanding Payment Flow
-1. Payment encryption happens on frontend (SafePaymentForm.jsx)
-2. Backend creates session via Worldline API (server.js)
-3. Encrypted token stored in database (never decrypted)
-4. For 3DS: redirect user to bank, wait for webhook
+### Understanding Full Payment Flow
+1. **Session Creation** - Backend creates session via Worldline API (server.js:25-110)
+2. **Frontend Encryption** - Frontend encrypts card data via SDK (PaymentForm.jsx:120-200)
+3. **Payment Processing** - Frontend submits encrypted token to backend (PaymentForm.jsx:180+)
+4. **Backend Processing** - Backend forwards to Worldline via Server SDK (server.js:112-341)
+5. **3DS Handling** - If 3DS required, redirect to bank, return to app (server.js:170+)
+6. **Status Tracking** - Check payment status anytime (server.js:343-380)
+7. **Webhooks** - Worldline notifies of final status (server.js:382-420)
 
 ### Adding Features
 - **Save Card:** Store `encryptedPaymentRequest` + metadata
@@ -140,6 +157,46 @@ This app is **PCI DSS Level 1 Compliant** because:
 
 **For production:** Add HTTPS, rate limiting, logging, audit trails.
 
+## Payment Processing Endpoints
+
+### POST /api/process-payment (server.js:112-207)
+Processes encrypted payment token through Worldline.
+
+**Request:**
+```javascript
+{
+  encryptedPaymentRequest: string,  // Encrypted token from SDK
+  customerId: string,                // From session
+  amount: number,                    // In cents (77799 = AUD 777.99)
+  currency: string,                  // e.g. "AUD"
+  cardHolder: string                 // Optional
+}
+```
+
+**Responses:**
+- **200 OK** - `{ success: true, paymentId, status, cardNumber }`
+- **402 Payment Required** - `{ requires3DS: true, redirectUrl, paymentId }` (3D Secure needed)
+- **400 Bad Request** - `{ success: false, error, status }`
+
+### GET /api/payment-status/:paymentId (server.js:343-380)
+Retrieves current payment status from Worldline.
+
+**Response:**
+```javascript
+{
+  paymentId: string,
+  status: "SUCCEEDED" | "FAILED" | "PENDING" | etc,
+  amount: number,
+  currency: string,
+  createdAt: ISO8601 timestamp
+}
+```
+
+### POST /api/webhook (server.js:382-420)
+Receives payment status updates from Worldline. Configure webhook URL in merchant dashboard.
+
+**Payload:** Status update from Worldline with paymentId, status, customerId, etc.
+
 ## Known Limitations
 
 1. **✅ FIXED: Expiry Date Format** - Worldline SDK requires `MMYYYY` format
@@ -152,6 +209,11 @@ This app is **PCI DSS Level 1 Compliant** because:
    - Doesn't block flow, just for information
    - This is expected for some ANZ Worldline regions
    - See [useWorldlineSession.js:104-111](src/hooks/useWorldlineSession.js#L104-L111)
+
+3. **Database Storage** - Phase 2 pending
+   - Currently no persistent payment transaction storage
+   - Payments work end-to-end but aren't logged to database
+   - WebhookEndpoint ready but not storing updates yet
 
 ## SDK Versions
 

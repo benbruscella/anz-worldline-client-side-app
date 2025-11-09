@@ -87,6 +87,10 @@ export function useWorldlineSession(paymentContext = {}) {
         assetUrl: credentials.assetUrl,
       })
 
+      // Store credentials on the session object for easy access
+      newSession.customerId = credentials.customerId
+      newSession.clientSessionId = credentials.clientSessionId
+
       setSession(newSession)
 
       // 3. Load available payment products

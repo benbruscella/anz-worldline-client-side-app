@@ -16,15 +16,16 @@ A complete, production-ready React + Express application for integrating Worldli
 5. [API Endpoints](#api-endpoints)
 6. [Test Cards](#test-cards)
 7. [Payment Flow](#payment-flow)
-8. [Storing Cards for Future Payments](#storing-cards-for-future-payments)
-9. [3D Secure & Authentication](#3d-secure--authentication)
-10. [PCI DSS Compliance](#pci-dss-compliance)
-11. [Development](#development)
-12. [Production Deployment](#production-deployment)
-13. [Security Best Practices](#security-best-practices)
-14. [Troubleshooting](#troubleshooting)
-15. [Dependencies](#dependencies)
-16. [Resources](#resources)
+8. [Payment Processing](#payment-processing)
+9. [Storing Cards for Future Payments](#storing-cards-for-future-payments)
+10. [3D Secure & Authentication](#3d-secure--authentication)
+11. [PCI DSS Compliance](#pci-dss-compliance)
+12. [Development](#development)
+13. [Production Deployment](#production-deployment)
+14. [Security Best Practices](#security-best-practices)
+15. [Troubleshooting](#troubleshooting)
+16. [Dependencies](#dependencies)
+17. [Resources](#resources)
 
 ---
 
@@ -351,6 +352,93 @@ npm run preview             # Preview production build
    - Encrypted token shown in Token Log
    - Console logs encryption details
    - Ready to send to payment processing
+
+---
+
+## Payment Processing
+
+### Processing Encrypted Payments
+
+Once you have an encrypted payment token from the frontend, send it to the backend for processing:
+
+**Endpoint:** `POST /api/process-payment`
+
+**Request:**
+```javascript
+const response = await fetch('http://localhost:3000/api/process-payment', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    encryptedPaymentRequest: encryptedToken,    // From SDK encryption
+    customerId: session.customerId,              // From session
+    amount: 77799,                               // Amount in cents
+    currency: 'AUD',                             // Currency code
+    cardHolder: 'TEST USER'                      // Optional: cardholder name
+  })
+})
+
+const result = await response.json()
+```
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "paymentId": "000100001234567890",
+  "status": "SUCCEEDED",
+  "cardNumber": "4111xxxxxx1111"
+}
+```
+
+**3D Secure Required (HTTP 402):**
+```json
+{
+  "requires3DS": true,
+  "paymentId": "000100001234567890",
+  "redirectUrl": "https://bank.example.com/3ds-auth",
+  "message": "Customer authentication required"
+}
+```
+
+When 3DS is required, redirect the user to `redirectUrl` for bank authentication, then return to your app.
+
+### Checking Payment Status
+
+**Endpoint:** `GET /api/payment-status/:paymentId`
+
+**Request:**
+```javascript
+const response = await fetch('http://localhost:3000/api/payment-status/000100001234567890')
+const status = await response.json()
+```
+
+**Response:**
+```json
+{
+  "paymentId": "000100001234567890",
+  "status": "SUCCEEDED",
+  "amount": 77799,
+  "currency": "AUD",
+  "createdAt": "2025-11-09T12:00:00Z"
+}
+```
+
+### Webhook Notifications
+
+**Endpoint:** `POST /api/webhook`
+
+Worldline sends payment status updates to your webhook endpoint. Configure this in your Worldline merchant dashboard.
+
+**Payload:**
+```json
+{
+  "paymentId": "000100001234567890",
+  "status": "SUCCEEDED",
+  "customerId": "customer-123",
+  "amount": 77799,
+  "currency": "AUD"
+}
+```
 
 ---
 

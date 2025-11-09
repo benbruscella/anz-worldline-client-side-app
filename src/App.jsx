@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import PaymentForm from './components/PaymentForm'
 import TokenLog from './components/TokenLog'
+import PaymentStatus from './components/PaymentStatus'
 
 function App() {
   const [tokens, setTokens] = useState([])
@@ -38,6 +39,9 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* Payment Status Modal */}
+      <PaymentStatus onClose={() => {}} />
     </div>
   )
 }
