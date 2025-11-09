@@ -1027,6 +1027,61 @@ npm install
 - Add real PSPID and API Key to `.env.local`
 - Restart backend
 
+### Payment Encryption Fails
+
+**Problem:** "Payment encryption failed" error or timeout
+
+**Solution:**
+1. Check browser console (F12) for detailed error messages
+2. Verify session is properly initialized (look for "✅ Session created" in backend console)
+3. Ensure Worldline SDK is loaded (check Network tab for `onlinepayments-sdk-client-js`)
+4. Try increasing timeout in [PaymentForm.jsx:159](src/components/PaymentForm.jsx#L159) if network is slow
+5. Verify your credentials are correct - bad credentials can cause encryption to fail silently
+
+### Payment Products Not Loading
+
+**Problem:** "0 products available" message in form info
+
+**Potential Causes:**
+- This is a known issue with ANZ Worldline API for some regions
+- Payment products are optional - card payments work without them
+- The hardcoded payment product ID `1` (card) is used for encryption regardless
+
+**What to check:**
+1. Look in browser console for error details from `getBasicPaymentItems()`
+2. Verify your API endpoint is correct in `WORLDLINE_API_URL`
+3. Check if the ANZ Worldline API supports payment products for your region
+4. This doesn't block payment processing - it's informational only
+
+---
+
+## Recent Improvements (API v1 → v2 Migration)
+
+This version includes fixes for ANZ Worldline API compatibility:
+
+### ✅ Fixed Issues
+1. **Configurable API Endpoint** - No longer hardcoded
+   - Update `WORLDLINE_API_URL` in `.env.local` to switch between sandbox/production
+   - Server automatically parses host, scheme, and port from the URL
+
+2. **Better Encryption Error Handling** - No more silent failures
+   - Removed demo/fake encryption fallback
+   - Proper error messages distinguish between timeout and real errors
+   - Clear guidance on what to fix
+
+3. **Improved Payment Products Loading** - Better diagnostics
+   - More detailed logging of what's happening
+   - Better error messages with troubleshooting tips
+   - Doesn't fail entire session if products can't load
+
+4. **Production-Ready CORS**
+   - Add `CORS_ORIGIN` env var to restrict domains in production
+   - Defaults to permissive mode for development
+   - See `.env.local.example` for configuration
+
+### Related GitHub Issue
+See [Issue #1](https://github.com/benbruscella/anz-worldline-client-side-app/issues/1) for the original discussion of these problems.
+
 ---
 
 ## How PSPID Works

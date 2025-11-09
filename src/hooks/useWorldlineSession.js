@@ -100,14 +100,35 @@ export function useWorldlineSession(paymentContext = {}) {
           isRecurring: false,
         }
 
-        console.log('Loading payment products...')
+        console.log('Loading payment products with context:', context)
         const products = await newSession.getBasicPaymentItems(context)
-        console.log('Payment products loaded:', products.basicPaymentProducts)
 
-        setPaymentProducts(products.basicPaymentProducts || [])
+        if (products && products.basicPaymentProducts) {
+          console.log('✅ Payment products loaded successfully:', products.basicPaymentProducts.length, 'products')
+          setPaymentProducts(products.basicPaymentProducts)
+        } else {
+          console.warn('⚠️ No payment products returned from SDK')
+          console.warn('Response structure:', {
+            hasProducts: !!products,
+            hasBasicPaymentProducts: !!(products && products.basicPaymentProducts),
+            fullResponse: products
+          })
+          setPaymentProducts([])
+        }
       } catch (err) {
-        console.warn('Could not load payment products:', err.message)
-        // Don't fail - product loading might not be required
+        console.error('❌ Failed to load payment products')
+        console.error('Error message:', err.message)
+        console.error('Error type:', err.name)
+        console.error('Full error:', err)
+
+        // Log suggestions for troubleshooting
+        console.warn('Troubleshooting tips:')
+        console.warn('- Verify session is properly initialized')
+        console.warn('- Check if API endpoint supports payment products for your region')
+        console.warn('- Check browser console for CORS or network errors')
+
+        // Don't fail - product loading might not be required for card payments
+        setPaymentProducts([])
       }
     } catch (err) {
       console.error('Session initialization failed:', err)

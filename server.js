@@ -15,20 +15,50 @@ import { init } from 'onlinepayments-sdk-nodejs'
 dotenv.config({ path: '.env.local' })
 
 const app = express()
-app.use(cors())
+
+// CORS Configuration
+const CORS_ORIGIN = process.env.CORS_ORIGIN
+const corsOptions = CORS_ORIGIN
+  ? {
+      origin: CORS_ORIGIN.split(',').map(origin => origin.trim()),
+      credentials: true,
+      methods: ['GET', 'POST', 'OPTIONS'],
+      allowedHeaders: ['Content-Type']
+    }
+  : { origin: '*' } // Development: allow all origins
+
+app.use(cors(corsOptions))
 app.use(express.json())
 
 const WORLDLINE_PSPID = process.env.WORLDLINE_PSPID
 const WORLDLINE_API_KEY_ID = process.env.WORLDLINE_API_KEY_ID
 const WORLDLINE_API_SECRET_KEY = process.env.WORLDLINE_API_SECRET_KEY
+const WORLDLINE_API_URL = process.env.WORLDLINE_API_URL || 'https://payment.preprod.anzworldline-solutions.com.au'
+
+// Parse API URL to extract host, scheme, and port
+function parseApiUrl(urlString) {
+  try {
+    const url = new URL(urlString)
+    return {
+      scheme: url.protocol.replace(':', ''),
+      host: url.hostname,
+      port: url.port ? parseInt(url.port) : (url.protocol === 'https:' ? 443 : 80)
+    }
+  } catch (error) {
+    console.error('Invalid WORLDLINE_API_URL:', urlString)
+    throw new Error('Invalid WORLDLINE_API_URL format')
+  }
+}
+
+const apiUrlConfig = parseApiUrl(WORLDLINE_API_URL)
 
 // Initialize SDK client once at startup
 const client = init({
   apiKeyId: WORLDLINE_API_KEY_ID,
   secretApiKey: WORLDLINE_API_SECRET_KEY,
-  host: 'payment.preprod.anzworldline-solutions.com.au',
-  scheme: 'https',
-  port: 443,
+  host: apiUrlConfig.host,
+  scheme: apiUrlConfig.scheme,
+  port: apiUrlConfig.port,
   integrator: 'WorldlinePaymentApp/1.0',
   enableLogging: true
 })
@@ -46,7 +76,8 @@ app.post('/api/session', async (req, res) => {
       })
     }
 
-    console.log('Creating session for PSPID:', WORLDLINE_PSPID)
+    console.log(`Creating session for PSPID: ${WORLDLINE_PSPID}`)
+    console.log(`Using API endpoint: ${apiUrlConfig.scheme}://${apiUrlConfig.host}:${apiUrlConfig.port}`)
 
     // Create session using SDK
     const sdkResponse = await client.sessions.createSession(WORLDLINE_PSPID, {})

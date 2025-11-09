@@ -145,26 +145,36 @@ export default function PaymentForm({ onTokenGenerated }) {
       // Encrypt the payment request
       console.log('Encrypting payment request...')
       const encryptor = session.getEncryptor()
-      console.log('Encryptor object:', encryptor)
+
+      if (!encryptor) {
+        throw new Error('Encryptor not available. Session may not be properly initialized.')
+      }
+
+      console.log('Encryptor available:', !!encryptor)
 
       let encryptedPaymentRequest
       try {
         encryptedPaymentRequest = await Promise.race([
           encryptor.encrypt(paymentRequest),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Encryption timeout')), 5000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Encryption timeout after 5 seconds')), 5000))
         ])
-        console.log('✅ Encrypted payment request:', encryptedPaymentRequest)
-      } catch (encryptError) {
-        console.error('Encryption error:', encryptError)
-        // If encryption fails, create a demo encrypted payload for testing
-        // In production, this would need to be fixed
-        console.warn('Using demo encrypted payload for testing purposes')
-        encryptedPaymentRequest = {
-          encryptedString: 'demo-encrypted-payload-' + Date.now(),
-          encryptionMethod: 'RSA',
-          keyId: session.getEncryptor()?.__private_2_clientSessionId || 'unknown'
+
+        if (!encryptedPaymentRequest) {
+          throw new Error('Encryptor returned empty result')
         }
-        console.log('Demo encrypted payload:', encryptedPaymentRequest)
+
+        console.log('✅ Encrypted payment request created')
+      } catch (encryptError) {
+        console.error('❌ Encryption failed:', encryptError.message)
+        console.error('Full error:', encryptError)
+
+        // Check if this is a timeout or actual encryption issue
+        if (encryptError.message.includes('timeout')) {
+          throw new Error('Payment encryption is taking too long. This may indicate a network issue or SDK problem. Please try again.')
+        }
+
+        // For other encryption failures, provide diagnostic info
+        throw new Error(`Payment encryption failed: ${encryptError.message}. Please ensure your session is properly initialized and the SDK is loaded.`)
       }
 
       // Create token response
