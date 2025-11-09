@@ -19,12 +19,15 @@ export const worldlineConfig = {
 /**
  * Test cards for different payment methods
  * Use these in test mode to verify integration
+ *
+ * NOTE: Expiry format is MM/YY for UI display
+ * The SDK internally converts this to MMYYYY format (e.g., "12/25" -> "122025")
  */
 export const testCards = [
   {
     name: 'Visa - Success',
     number: '4111111111111111',
-    expiry: '12/25',
+    expiry: '12/25', // MM/YY format - SDK converts to MMYYYY (122025)
     cvv: '123',
     holder: 'TEST USER',
   },

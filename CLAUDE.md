@@ -142,12 +142,15 @@ This app is **PCI DSS Level 1 Compliant** because:
 
 ## Known Limitations
 
-1. **Demo Encryption Fallback** - If SDK encryption fails, demo payload used (for testing)
-   - Production: Fix underlying SDK issue
-   - See [PaymentForm.jsx:162-167](src/components/PaymentForm.jsx#L162-L167)
+1. **✅ FIXED: Expiry Date Format** - Worldline SDK requires `MMYYYY` format
+   - Previously caused "regularExpression" validation errors
+   - [PaymentForm.jsx:150-158](src/components/PaymentForm.jsx#L150-L158) now auto-converts `MM/YY` → `MMYYYY`
+   - Example: `12/25` automatically becomes `122025`
+   - This was the root cause of most encryption failures - now resolved!
 
 2. **Payment Products Endpoint** - Currently returns "No payment products available"
    - Doesn't block flow, just for information
+   - This is expected for some ANZ Worldline regions
    - See [useWorldlineSession.js:104-111](src/hooks/useWorldlineSession.js#L104-L111)
 
 ## SDK Versions

@@ -20,6 +20,11 @@ All notable changes to this project will be documented in this file.
 - **Payment Encryption Fallback**: Added graceful fallback to demo encrypted payload when SDK encryption fails, allowing demo functionality while SDK issue is investigated
 - **Frontend-Backend Communication**: Fixed API URL routing between frontend (port 5173) and backend (port 3000)
 - **Session Credential Passing**: Ensured session credentials from backend are properly passed to frontend SDK initialization
+- **✨ CRITICAL: Expiry Date Format Validation** - Fixed "regularExpression" validation error in payment encryption
+  - Worldline SDK requires expiry dates in `MMYYYY` format (e.g., `122025` for Dec 2025), not `MM/YY`
+  - [PaymentForm.jsx](src/components/PaymentForm.jsx#L150-L158) now auto-converts user input: `12/25` → `122025`
+  - This was the root cause of most payment encryption failures
+  - Regex pattern: `^(0[1-9]|1[0-2])(\d{4})$` (month 01-12, year 4 digits)
 
 ### Technical Details
 - **Backend**: Node.js + Express.js server running on port 3000

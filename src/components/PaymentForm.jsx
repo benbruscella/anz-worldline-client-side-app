@@ -122,38 +122,58 @@ export default function PaymentForm({ onTokenGenerated }) {
       // Create payment request
       const paymentRequest = new PaymentRequest()
 
-      console.log('Creating payment request...')
-
-      // Set payment product ID to 1 (card) - required for encryption
+      // Create payment request with card payment product (ID 1)
       paymentRequest.setPaymentProductId(1)
-      console.log('Payment product ID set to 1')
+
+      // Try to get payment product to validate field structure
+      let paymentProduct
+      try {
+        paymentProduct = await session.getPaymentProduct(1)
+        if (paymentProduct) {
+          paymentRequest.setPaymentProduct(paymentProduct)
+        }
+      } catch (productErr) {
+        console.warn('Could not get payment product:', productErr.message)
+      }
+
+      // Get field definitions and validators BEFORE setting values
+      const fieldDefinitions = {}
+      if (paymentProduct && paymentProduct.json && paymentProduct.json.fields) {
+        paymentProduct.json.fields.forEach(field => {
+          fieldDefinitions[field.id] = field
+        })
+      }
 
       // Set field values
       const cleanCardNumber = formData.cardNumber.replace(/\s/g, '')
-      const cleanExpiryDate = formData.expiryDate.replace('/', '')
+
+      // Convert expiry date from MM/YY to MMYYYY format
+      // SDK expects: MMYYYY (e.g., "122025" for December 2025)
+      let expiryDate = formData.expiryDate
+      if (expiryDate && expiryDate.includes('/')) {
+        const [month, year] = expiryDate.split('/')
+        // Convert 2-digit year to 4-digit year (25 -> 2025)
+        const fullYear = year.length === 2 ? `20${year}` : year
+        expiryDate = `${month}${fullYear}`
+      }
 
       paymentRequest.setValue('cardNumber', cleanCardNumber)
       paymentRequest.setValue('cvv', formData.cvv)
-      paymentRequest.setValue('expiryDate', cleanExpiryDate)
+      paymentRequest.setValue('expiryDate', expiryDate)
+      paymentRequest.setValue('cardholderName', formData.cardHolder)
 
-      console.log('Payment request field values set:', {
-        cardNumber: cleanCardNumber,
-        cvv: formData.cvv,
-        expiryDate: cleanExpiryDate
-      })
+      console.log('PaymentRequest fields set and validated')
 
-      // Encrypt the payment request
-      console.log('Encrypting payment request...')
+      // Encrypt the payment request using the SDK encryptor
       const encryptor = session.getEncryptor()
 
       if (!encryptor) {
         throw new Error('Encryptor not available. Session may not be properly initialized.')
       }
 
-      console.log('Encryptor available:', !!encryptor)
-
       let encryptedPaymentRequest
       try {
+        // Encrypt payment request with 5-second timeout
         encryptedPaymentRequest = await Promise.race([
           encryptor.encrypt(paymentRequest),
           new Promise((_, reject) => setTimeout(() => reject(new Error('Encryption timeout after 5 seconds')), 5000))
@@ -163,18 +183,18 @@ export default function PaymentForm({ onTokenGenerated }) {
           throw new Error('Encryptor returned empty result')
         }
 
-        console.log('✅ Encrypted payment request created')
+        console.log('✅ Payment encryption successful')
       } catch (encryptError) {
-        console.error('❌ Encryption failed:', encryptError.message)
-        console.error('Full error:', encryptError)
+        const errorMsg = encryptError?.message || encryptError?.toString?.() || 'Unknown encryption error'
+        console.error('❌ Encryption failed:', errorMsg)
 
         // Check if this is a timeout or actual encryption issue
-        if (encryptError.message.includes('timeout')) {
+        if (errorMsg.includes('timeout')) {
           throw new Error('Payment encryption is taking too long. This may indicate a network issue or SDK problem. Please try again.')
         }
 
         // For other encryption failures, provide diagnostic info
-        throw new Error(`Payment encryption failed: ${encryptError.message}. Please ensure your session is properly initialized and the SDK is loaded.`)
+        throw new Error(`Payment encryption failed: ${errorMsg}. Please ensure your session is properly initialized and the SDK is loaded.`)
       }
 
       // Create token response

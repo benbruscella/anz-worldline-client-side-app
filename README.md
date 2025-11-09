@@ -1032,11 +1032,14 @@ npm install
 **Problem:** "Payment encryption failed" error or timeout
 
 **Solution:**
+
 1. Check browser console (F12) for detailed error messages
-2. Verify session is properly initialized (look for "✅ Session created" in backend console)
+2. Verify session is properly initialized (look for "✅ Session created successfully" in backend console)
 3. Ensure Worldline SDK is loaded (check Network tab for `onlinepayments-sdk-client-js`)
-4. Try increasing timeout in [PaymentForm.jsx:159](src/components/PaymentForm.jsx#L159) if network is slow
-5. Verify your credentials are correct - bad credentials can cause encryption to fail silently
+4. Verify your credentials are correct - bad credentials can cause encryption to fail silently
+5. Try increasing timeout if network is slow
+
+**Note:** Expiry dates are automatically formatted as `MMYYYY` (e.g., `122025` for Dec 2025) by [PaymentForm.jsx](src/components/PaymentForm.jsx#L150-L158)
 
 ### Payment Products Not Loading
 
@@ -1055,11 +1058,12 @@ npm install
 
 ---
 
-## Recent Improvements (API v1 → v2 Migration)
+## Recent Improvements (API v1 → v2 Migration + Encryption Fixes)
 
-This version includes fixes for ANZ Worldline API compatibility:
+This version includes comprehensive fixes for ANZ Worldline API compatibility and payment encryption:
 
 ### ✅ Fixed Issues
+
 1. **Configurable API Endpoint** - No longer hardcoded
    - Update `WORLDLINE_API_URL` in `.env.local` to switch between sandbox/production
    - Server automatically parses host, scheme, and port from the URL
@@ -1078,6 +1082,11 @@ This version includes fixes for ANZ Worldline API compatibility:
    - Add `CORS_ORIGIN` env var to restrict domains in production
    - Defaults to permissive mode for development
    - See `.env.local.example` for configuration
+
+5. **✨ NEW: Automatic Expiry Date Format Conversion**
+   - User enters expiry in familiar `MM/YY` format (e.g., `12/25`)
+   - [PaymentForm.jsx](src/components/PaymentForm.jsx#L150-L158) automatically converts to SDK format: `MMYYYY` (e.g., `122025`)
+   - Seamless experience with no manual formatting required
 
 ### Related GitHub Issue
 See [Issue #1](https://github.com/benbruscella/anz-worldline-client-side-app/issues/1) for the original discussion of these problems.
