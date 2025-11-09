@@ -36,7 +36,11 @@ npm install
 
 # 2. Configure
 cp .env.local.example .env.local
-# Edit .env.local with your WORLDLINE_PSPID and WORLDLINE_API_KEY
+# Edit .env.local with your Worldline credentials:
+#   - WORLDLINE_PSPID (your merchant ID)
+#   - WORLDLINE_API_KEY_ID
+#   - WORLDLINE_API_SECRET_KEY
+#   - WORLDLINE_API_URL (sandbox or production)
 
 # 3. Start backend (Terminal 1)
 npm run server
@@ -45,7 +49,7 @@ npm run server
 npm run dev
 
 # 5. Open browser
-# http://localhost:5173 (or 3001)
+# http://localhost:5173
 ```
 
 ---
