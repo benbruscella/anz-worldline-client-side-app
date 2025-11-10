@@ -7,6 +7,7 @@ export default function PaymentHistory({ tokenHistory, currentToken, onTokenClea
   const [formError, setFormError] = useState(null)
   const [success, setSuccess] = useState(false)
   const [lastPaymentId, setLastPaymentId] = useState(null)
+  const [showDebug, setShowDebug] = useState(false)
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text)
@@ -25,6 +26,7 @@ export default function PaymentHistory({ tokenHistory, currentToken, onTokenClea
     setFormLoading(true)
     setFormError(null)
     setSuccess(false)
+    setLastPaymentId(null)
 
     try {
       if (!currentToken) {
@@ -55,7 +57,6 @@ export default function PaymentHistory({ tokenHistory, currentToken, onTokenClea
         console.log('✅ Payment successful, ID:', paymentResult.paymentId)
         setLastPaymentId(paymentResult.paymentId)
         setSuccess(true)
-        setTimeout(() => setSuccess(false), 4000)
       } else if (paymentResult.requires3DS) {
         setFormError('3D Secure authentication required. Check console for details.')
       } else {
@@ -79,7 +80,7 @@ export default function PaymentHistory({ tokenHistory, currentToken, onTokenClea
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-900 mb-6">
-        {currentToken ? 'Charge Payment' : 'Token Log'}
+        {currentToken ? 'Payment By Token' : 'Card Tokens'}
       </h2>
 
       {/* Charge with Token Form - Show when token exists */}
@@ -105,7 +106,7 @@ export default function PaymentHistory({ tokenHistory, currentToken, onTokenClea
               <button
                 type="button"
                 onClick={handleClearToken}
-                className="text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition"
+                className="text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition cursor-pointer"
               >
                 Clear Token
               </button>
@@ -164,36 +165,42 @@ export default function PaymentHistory({ tokenHistory, currentToken, onTokenClea
         </div>
       )}
 
-      {/* Token Log */}
-      {tokenHistory.length === 0 ? (
-        <div className="text-center py-8">
-          <p className="text-gray-500">
-            No tokens generated yet. Submit the payment form to generate tokens.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4 max-h-96 overflow-y-auto">
-          {tokenHistory.map((item) => (
-            <div
-              key={item.id}
-              className="border border-gray-200 rounded-lg p-4 bg-gray-50 hover:bg-gray-100 transition"
-            >
-              <div className="flex justify-between items-start mb-2">
-                <p className="text-xs text-gray-500">
-                  {item.timestamp}
-                </p>
-                <button
-                  onClick={() => copyToClipboard(item.token)}
-                  className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700 transition"
+      {/* Show Debug Collapsible Section */}
+      {tokenHistory.length > 0 && (
+        <div className="border border-gray-300 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="w-full px-4 py-3 bg-gray-100 hover:bg-gray-200 transition text-left font-semibold text-gray-800 flex justify-between items-center cursor-pointer"
+          >
+            Show Debug
+            <span className="text-xs">{showDebug ? '▼' : '▶'}</span>
+          </button>
+
+          {showDebug && (
+            <div className="space-y-4 p-4 max-h-96 overflow-y-auto bg-gray-50">
+              {tokenHistory.map((item) => (
+                <div
+                  key={item.id}
+                  className="border border-gray-200 rounded-lg p-4 bg-white hover:bg-gray-100 transition"
                 >
-                  Copy
-                </button>
-              </div>
-              <pre className="text-xs bg-gray-900 text-green-400 p-3 rounded overflow-x-auto break-words whitespace-pre-wrap">
-                {item.token}
-              </pre>
+                  <div className="flex justify-between items-start mb-2">
+                    <p className="text-xs text-gray-500">
+                      {item.timestamp}
+                    </p>
+                    <button
+                      onClick={() => copyToClipboard(item.token)}
+                      className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700 transition cursor-pointer"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <pre className="text-xs bg-gray-900 text-green-400 p-3 rounded overflow-x-auto break-words whitespace-pre-wrap">
+                    {item.token}
+                  </pre>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
 

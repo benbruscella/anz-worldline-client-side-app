@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Frontend Code Refactoring & UX Improvements ✅ COMPLETED (Issue #2)
+
+#### Component Restructuring
+- **Renamed Components** for semantic clarity:
+  - `PaymentForm.jsx` → `CardForm.jsx` (collects card details and generates tokens)
+  - `TokenLog.jsx` → `PaymentHistory.jsx` (displays saved card and processes payments)
+- **Updated imports** in `App.jsx` to reflect new component names
+
+#### State Management Improvements
+- **Renamed state variables** for consistency:
+  - `tokens` → `tokenHistory` (clarifies it's a historical log)
+  - `storedToken` → `currentToken` (clarifies it's the active token)
+- **Fixed token loading bug**: Token history now properly populates from localStorage on mount
+- **Fixed token clearing bug**: Both `currentToken` and `tokenHistory` are cleared when user clears token
+
+#### File Organization
+- **Moved config file**: `src/config/worldlineConfig.js` → `src/utils/testCards.js`
+  - Better reflects the file's purpose (utility, not configuration)
+- **Renamed localStorage module**: `tokenStorage.js` → `localStorage.js`
+  - Simplified function names: `saveSavedCard()` → `save()`, `loadSavedCard()` → `load()`
+
+#### UX/UX Enhancements
+- **Success message persistence**: Payment success now stays visible until user initiates new charge or clears token
+- **Debug section collapsible**: Added "Show Debug" collapsible section to hide token log by default
+  - Only shows when tokens exist
+  - Arrow indicator (▶/▼) shows expand/collapse state
+- **Cursor feedback**: Added `cursor-pointer` to "Clear Token" button for better affordance
+
+#### Backend Payment ID Fix ✅ CRITICAL FIX
+- **Root cause identified**: Worldline SDK returns class instances with non-enumerable properties
+- **Solution**: Use `Object.assign({}, paymentObject)` instead of `JSON.parse(JSON.stringify())` for proper property extraction
+- **Result**: Payment ID now correctly extracted and displayed to user
+- **Payment capture working**: Automatic payment capture now executes for PENDING_CAPTURE status with proper amount parameter
+- **Capture response handling**: Fixed structure difference between create and capture responses
+
+#### Code Quality
+- Removed 131 lines of bloat from tokenStorage.js (240→68 lines)
+- Eliminated unused state and functions
+- Improved code readability through semantic naming
+
 ### Environment Variables Refactoring ✅ COMPLETED
 - **Renamed for clarity:** All `WORLDLINE_*` variables now `ANZ_WORLDLINE_*`
   - `WORLDLINE_PSPID` → `ANZ_WORLDLINE_PSPID`

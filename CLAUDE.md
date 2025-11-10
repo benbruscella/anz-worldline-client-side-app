@@ -76,25 +76,41 @@ Worldline (PCI-certified)
 ## Critical Files
 
 ### Frontend
-- **[src/components/PaymentForm.jsx](src/components/PaymentForm.jsx)** - Payment form with SDK encryption
+- **[src/components/CardForm.jsx](src/components/CardForm.jsx)** - Card form with SDK encryption
+  - Collects card details from user (number, expiry, CVV, holder)
   - Encrypts card data using `session.getEncryptor()`
-  - Creates encrypted token for backend
-  - Handles 3D Secure redirects
+  - Creates encrypted token for storage in localStorage
+  - Automatically converts expiry from MM/YY to MMYYYY format
+  - Detects card type and masks card number
+
+- **[src/components/PaymentHistory.jsx](src/components/PaymentHistory.jsx)** - Payment processing & history
+  - Displays saved card with masked number and expiry
+  - Processes payments using saved card tokens
+  - Shows payment success messages with payment ID
+  - Collapsible "Show Debug" section shows token history/logs
 
 - **[src/hooks/useWorldlineSession.js](src/hooks/useWorldlineSession.js)** - Session management
-  - Fetches credentials from backend
+  - Fetches credentials from backend `/api/session`
   - Initializes Worldline SDK Session
   - Loads payment products
 
-- **[src/config/worldlineConfig.js](src/config/worldlineConfig.js)** - Test cards and config
+- **[src/utils/localStorage.js](src/utils/localStorage.js)** - Card storage utility
+  - `save(cardData)` - Saves encrypted card to browser localStorage
+  - `load()` - Loads saved card from localStorage
+  - `clear()` - Removes saved card from localStorage
+
+- **[src/utils/testCards.js](src/utils/testCards.js)** - Test cards and config
   - Contains test card numbers (all safe to use in sandbox)
   - Configuration helpers
 
 ### Backend
 - **[server.js](server.js)** - Express server
-  - `POST /api/session` - Creates Worldline client session
-  - Initialize Worldline SDK client at startup
-  - PSPID and API credentials used only here
+  - `POST /api/session` - Creates Worldline client session (lines 70-111)
+  - `POST /api/process-payment` - Processes encrypted payment tokens (lines 118-242)
+    - Extracts payment ID using `Object.assign({}, paymentObject)`
+    - Auto-captures payments in PENDING_CAPTURE status
+    - Handles 3D Secure redirects (HTTP 402 responses)
+  - PSPID and API credentials used only here (never exposed to frontend)
 
 ### Configuration
 - **[.env.local.example](.env.local.example)** - Environment template
@@ -268,7 +284,26 @@ npm run preview             # Preview build
 - **ANZ Merchant Portal:** [merchant.worldline.com](https://merchant.worldline.com/)
 - **GitHub Issues:** Report bugs and feature requests
 
+## Recent Changes (Issue #2: Refactoring & Payment ID Fix)
+
+### Components Refactored
+- `PaymentForm.jsx` → `CardForm.jsx` - Now focuses on card tokenization
+- `TokenLog.jsx` → `PaymentHistory.jsx` - Now handles both display and payment processing
+- `tokenStorage.js` → `localStorage.js` - Simplified utility functions
+- `src/config/worldlineConfig.js` → `src/utils/testCards.js` - Better file organization
+
+### Key Fixes
+- **Payment ID Extraction**: Fixed using `Object.assign({}, paymentObject)` instead of JSON serialization
+- **Payment Capture**: Implemented automatic capture for PENDING_CAPTURE status with proper amount
+- **Token Loading**: Fixed bug where token history didn't load from localStorage on mount
+- **Token Clearing**: Fixed bug where cleared tokens would reappear after refresh
+
+### UX Improvements
+- Success messages now persist until user takes action (charge or clear)
+- Token log hidden behind collapsible "Show Debug" section
+- Better visual feedback with cursor pointers and expand/collapse indicators
+
 ---
 
-**Last Updated:** 2025-11-06
+**Last Updated:** 2025-11-10
 **Maintained By:** Development Team
