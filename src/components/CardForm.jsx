@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { PaymentRequest } from 'onlinepayments-sdk-client-js'
 import { useWorldlineSession } from '../hooks/useWorldlineSession'
-import { testCards, getTestCard } from '../config/worldlineConfig'
+import { testCards, getTestCard } from '../utils/testCards'
+import * as localStorage from '../utils/localStorage'
 
-export default function PaymentForm({ onTokenGenerated }) {
+export default function CardForm({ onTokenGenerated, currentToken, onTokenCleared }) {
   const paymentContext = {
     countryCode: import.meta.env.VITE_COUNTRY_CODE || 'AU',
     currencyCode: import.meta.env.VITE_CURRENCY_CODE || 'AUD',
@@ -15,7 +16,6 @@ export default function PaymentForm({ onTokenGenerated }) {
 
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState(null)
-  const [success, setSuccess] = useState(false)
   const [fieldErrors, setFieldErrors] = useState({})
   const [useTestCard, setUseTestCard] = useState(true)
   const [selectedTestCard, setSelectedTestCard] = useState(testCards[0])
@@ -24,7 +24,6 @@ export default function PaymentForm({ onTokenGenerated }) {
     expiryDate: testCards[0].expiry,
     cvv: testCards[0].cvv,
     cardHolder: testCards[0].holder,
-    amount: (paymentContext.amount / 100).toFixed(2),
   })
 
   const handleTestCardChange = (e) => {
@@ -37,7 +36,6 @@ export default function PaymentForm({ onTokenGenerated }) {
         expiryDate: card.expiry,
         cvv: card.cvv,
         cardHolder: card.holder,
-        amount: formData.amount,
       })
       setFormError(null)
     }
@@ -67,7 +65,6 @@ export default function PaymentForm({ onTokenGenerated }) {
         expiryDate: card.expiry,
         cvv: card.cvv,
         cardHolder: card.holder,
-        amount: formData.amount,
       })
     }
   }
@@ -92,19 +89,16 @@ export default function PaymentForm({ onTokenGenerated }) {
       errors.cardHolder = 'Card holder name required'
     }
 
-    if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      errors.amount = 'Amount must be greater than 0'
-    }
-
     setFieldErrors(errors)
     return Object.keys(errors).length === 0
   }
 
-  const handleSubmit = async (e) => {
+  // **SCENARIO 2: Token Generation Handler**
+  // Encrypts card data and stores the encrypted payload as a reusable token in localStorage
+  const handleTokenize = async (e) => {
     e.preventDefault()
     setFormLoading(true)
     setFormError(null)
-    setSuccess(false)
 
     try {
       if (!validateFormData()) {
@@ -119,13 +113,11 @@ export default function PaymentForm({ onTokenGenerated }) {
         return
       }
 
-      // Create payment request
+      // Create PaymentRequest object with card details to generate a card token
       const paymentRequest = new PaymentRequest()
-
-      // Create payment request with card payment product (ID 1)
       paymentRequest.setPaymentProductId(1)
 
-      // Try to get payment product to validate field structure
+      // Try to get payment product
       let paymentProduct
       try {
         paymentProduct = await session.getPaymentProduct(1)
@@ -136,23 +128,11 @@ export default function PaymentForm({ onTokenGenerated }) {
         console.warn('Could not get payment product:', productErr.message)
       }
 
-      // Get field definitions and validators BEFORE setting values
-      const fieldDefinitions = {}
-      if (paymentProduct && paymentProduct.json && paymentProduct.json.fields) {
-        paymentProduct.json.fields.forEach(field => {
-          fieldDefinitions[field.id] = field
-        })
-      }
-
       // Set field values
       const cleanCardNumber = formData.cardNumber.replace(/\s/g, '')
-
-      // Convert expiry date from MM/YY to MMYYYY format
-      // SDK expects: MMYYYY (e.g., "122025" for December 2025)
       let expiryDate = formData.expiryDate
       if (expiryDate && expiryDate.includes('/')) {
         const [month, year] = expiryDate.split('/')
-        // Convert 2-digit year to 4-digit year (25 -> 2025)
         const fullYear = year.length === 2 ? `20${year}` : year
         expiryDate = `${month}${fullYear}`
       }
@@ -162,121 +142,85 @@ export default function PaymentForm({ onTokenGenerated }) {
       paymentRequest.setValue('expiryDate', expiryDate)
       paymentRequest.setValue('cardholderName', formData.cardHolder)
 
-      console.log('PaymentRequest fields set and validated')
+      // **SCENARIO 1: SDK Validation**
+      if (!paymentRequest.isValid()) {
+        const validationErrors = paymentRequest.getErrorMessageIds()
+        console.error('❌ SDK Validation failed:', validationErrors)
+        const errorMessages = validationErrors.map(errorId => {
+          const errorMap = {
+            'luhn': 'Invalid card number (failed checksum)',
+            'expirationDate': 'Card expired or invalid expiration date',
+            'regularExpression': 'Invalid format detected',
+            'length': 'Field length is incorrect',
+            'range': 'Value is outside the allowed range',
+            'required': 'This field is required'
+          }
+          return errorMap[errorId] || `Validation error: ${errorId}`
+        })
+        throw new Error(`Payment validation failed: ${errorMessages.join(', ')}`)
+      }
 
-      // Encrypt the payment request using the SDK encryptor
+      console.log('✅ SDK validation passed - encrypting...')
+
+      // Encrypt the card details to generate a reusable card token
       const encryptor = session.getEncryptor()
-
       if (!encryptor) {
         throw new Error('Encryptor not available. Session may not be properly initialized.')
       }
 
-      let encryptedPaymentRequest
+      let cardToken
       try {
-        // Encrypt payment request with 5-second timeout
-        encryptedPaymentRequest = await Promise.race([
+        cardToken = await Promise.race([
           encryptor.encrypt(paymentRequest),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Encryption timeout after 5 seconds')), 5000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Encryption timeout')), 5000))
         ])
 
-        if (!encryptedPaymentRequest) {
+        if (!cardToken) {
           throw new Error('Encryptor returned empty result')
         }
 
-        console.log('✅ Payment encryption successful')
+        console.log('✅ Card token generated')
       } catch (encryptError) {
         const errorMsg = encryptError?.message || encryptError?.toString?.() || 'Unknown encryption error'
         console.error('❌ Encryption failed:', errorMsg)
-
-        // Check if this is a timeout or actual encryption issue
-        if (errorMsg.includes('timeout')) {
-          throw new Error('Payment encryption is taking too long. This may indicate a network issue or SDK problem. Please try again.')
-        }
-
-        // For other encryption failures, provide diagnostic info
-        throw new Error(`Payment encryption failed: ${errorMsg}. Please ensure your session is properly initialized and the SDK is loaded.`)
+        throw new Error(`Payment encryption failed: ${errorMsg}`)
       }
 
-      // Create token response with clear currency formatting
-      const formattedAmount = `${paymentContext.currencyCode} $${parseFloat(formData.amount).toFixed(2)}`
-      const token = {
-        encryptedPaymentRequest: encryptedPaymentRequest,
-        paymentAmount: formattedAmount, // More readable: "AUD $777.99"
-        cardNumber: maskCardNumber(formData.cardNumber),
+      // Save token to localStorage with metadata
+      const tokenData = {
+        cardToken: cardToken,
+        maskedCardNumber: maskCardNumber(formData.cardNumber),
+        cardType: detectCardType(formData.cardNumber),
         cardHolder: formData.cardHolder,
-        amountInCents: Math.round(parseFloat(formData.amount) * 100),
-        currency: paymentContext.currencyCode,
-        timestamp: new Date().toISOString(),
-        paymentProductCount: paymentProducts.length,
-        testMode: import.meta.env.VITE_TEST_MODE === 'true',
-      }
-
-      console.log('Generated Token:', token)
-      onTokenGenerated(JSON.stringify(token, null, 2))
-
-      // Submit encrypted token to backend for payment processing
-      console.log('Submitting encrypted token to backend...')
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
-      const paymentPayload = {
-        encryptedPaymentRequest: encryptedPaymentRequest,
+        expiryDate: formData.expiryDate,
+        paymentProductId: 1,
         customerId: session.customerId,
-        amount: token.amountInCents,
-        currency: token.currency,
-        cardHolder: formData.cardHolder
+        createdAt: new Date().toISOString()
       }
-      console.log('Payment payload:', paymentPayload)
 
-      const paymentResponse = await fetch(`${apiUrl}/process-payment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(paymentPayload)
-      })
-
-      const paymentResult = await paymentResponse.json()
-      console.log('Payment Response:', paymentResult)
-
-      // Handle payment response
-      if (paymentResponse.status === 402 && paymentResult.requires3DS) {
-        // 3D Secure required - redirect to bank
-        console.log('⚠️ 3D Secure authentication required')
-        console.log('Redirecting to:', paymentResult.redirectUrl)
-        // Store payment ID in session for reference
-        sessionStorage.setItem('pendingPaymentId', paymentResult.paymentId)
-        // Redirect to bank for authentication
-        window.location.href = paymentResult.redirectUrl
-      } else if (paymentResponse.ok && paymentResult.success) {
-        // Payment successful
-        console.log('✅ Payment successful:', paymentResult.paymentId)
-        setSuccess(true)
-        sessionStorage.setItem('lastPaymentId', paymentResult.paymentId)
-        sessionStorage.setItem('lastPaymentStatus', paymentResult.status)
-        sessionStorage.setItem('showPaymentStatus', 'true')
-        setTimeout(() => setSuccess(false), 4000)
-
-        // Reset form
-        if (useTestCard) {
-          const card = selectedTestCard
-          setFormData({
-            cardNumber: card.number,
-            expiryDate: card.expiry,
-            cvv: card.cvv,
-            cardHolder: card.holder,
-            amount: formData.amount,
-          })
-        }
+      if (localStorage.save(tokenData)) {
+        onTokenGenerated(JSON.stringify(tokenData, null, 2))
       } else {
-        // Payment failed
-        const errorMsg = paymentResult.error || 'Payment processing failed'
-        console.error('❌ Payment failed:', errorMsg)
-        throw new Error(errorMsg)
+        throw new Error('Failed to save card')
       }
     } catch (err) {
-      console.error('❌ Payment processing error:', err?.message || err)
-      const errorMsg = err?.message || (Array.isArray(err) ? err.join(', ') : err?.toString?.() || 'Failed to process payment')
+      console.error('❌ Tokenization error:', err?.message || err)
+      const errorMsg = err?.message || (Array.isArray(err) ? err.join(', ') : err?.toString?.() || 'Failed to create token')
       setFormError(errorMsg)
     } finally {
       setFormLoading(false)
     }
+  }
+
+
+
+  const detectCardType = (cardNumber) => {
+    const cleanNumber = cardNumber.replace(/\D/g, '')
+    if (/^4/.test(cleanNumber)) return 'VISA'
+    if (/^5[1-5]/.test(cleanNumber)) return 'MASTERCARD'
+    if (/^3[47]/.test(cleanNumber)) return 'AMEX'
+    if (/^6011/.test(cleanNumber)) return 'DISCOVER'
+    return 'UNKNOWN'
   }
 
   const maskCardNumber = (cardNumber) => {
@@ -287,10 +231,10 @@ export default function PaymentForm({ onTokenGenerated }) {
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-900 mb-6">
-        Payment Details
+        Card Details
       </h2>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-4">
         {/* Session Status */}
         {sessionError && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
@@ -349,9 +293,10 @@ export default function PaymentForm({ onTokenGenerated }) {
             value={formData.cardHolder}
             onChange={handleInputChange}
             required
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-              fieldErrors.cardHolder ? 'border-red-500' : 'border-gray-300'
-            }`}
+            disabled={!!currentToken}
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${currentToken ? 'bg-gray-100 cursor-not-allowed' : ''
+              } ${fieldErrors.cardHolder ? 'border-red-500' : 'border-gray-300'
+              }`}
             placeholder="John Doe"
           />
           {fieldErrors.cardHolder && (
@@ -370,9 +315,10 @@ export default function PaymentForm({ onTokenGenerated }) {
             value={formData.cardNumber}
             onChange={handleInputChange}
             required
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono ${
-              fieldErrors.cardNumber ? 'border-red-500' : 'border-gray-300'
-            }`}
+            disabled={!!currentToken}
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono ${currentToken ? 'bg-gray-100 cursor-not-allowed' : ''
+              } ${fieldErrors.cardNumber ? 'border-red-500' : 'border-gray-300'
+              }`}
             placeholder="4111 1111 1111 1111"
           />
           {fieldErrors.cardNumber && (
@@ -392,9 +338,10 @@ export default function PaymentForm({ onTokenGenerated }) {
               value={formData.expiryDate}
               onChange={handleInputChange}
               required
-              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono ${
-                fieldErrors.expiryDate ? 'border-red-500' : 'border-gray-300'
-              }`}
+              disabled={!!currentToken}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono ${currentToken ? 'bg-gray-100 cursor-not-allowed' : ''
+                } ${fieldErrors.expiryDate ? 'border-red-500' : 'border-gray-300'
+                }`}
               placeholder="12/25"
             />
             {fieldErrors.expiryDate && (
@@ -411,9 +358,10 @@ export default function PaymentForm({ onTokenGenerated }) {
               value={formData.cvv}
               onChange={handleInputChange}
               required
-              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono ${
-                fieldErrors.cvv ? 'border-red-500' : 'border-gray-300'
-              }`}
+              disabled={!!currentToken}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono ${currentToken ? 'bg-gray-100 cursor-not-allowed' : ''
+                } ${fieldErrors.cvv ? 'border-red-500' : 'border-gray-300'
+                }`}
               placeholder="123"
             />
             {fieldErrors.cvv && (
@@ -422,79 +370,22 @@ export default function PaymentForm({ onTokenGenerated }) {
           </div>
         </div>
 
-        {/* Amount */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Amount ({paymentContext.currencyCode})
-          </label>
-          <div className="flex gap-2">
-            <span className="inline-flex items-center px-3 bg-gray-100 border border-gray-300 rounded-l-md text-gray-600 font-medium">
-              $
-            </span>
-            <input
-              type="number"
-              name="amount"
-              value={formData.amount}
-              onChange={handleInputChange}
-              required
-              step="0.01"
-              min="0"
-              className={`flex-1 px-3 py-2 border rounded-r-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                fieldErrors.amount ? 'border-red-500' : 'border-gray-300'
-              }`}
-              placeholder="100.00"
-            />
-          </div>
-          {fieldErrors.amount && (
-            <p className="text-red-600 text-xs mt-1">{fieldErrors.amount}</p>
-          )}
-        </div>
-
         {/* Error Message */}
-        {formError && (
+        {formError && !storedToken && (
           <div className="bg-red-50 border border-red-200 rounded-md p-3 text-red-700 text-sm">
             ⚠️ {formError}
           </div>
         )}
 
-        {/* Success Message */}
-        {success && (
-          <div className="bg-green-50 border border-green-200 rounded-md p-3 text-green-700 text-sm">
-            <p className="font-semibold">✓ Payment processed successfully!</p>
-            <p className="text-xs mt-1">
-              Payment ID: <span className="font-mono">{sessionStorage.getItem('lastPaymentId')}</span>
-            </p>
-          </div>
-        )}
-
-        {/* Submit Button */}
+        {/* Generate Token Button */}
         <button
-          type="submit"
-          disabled={formLoading || loading || !session}
+          type="button"
+          onClick={handleTokenize}
+          disabled={formLoading || loading || !session || !!currentToken}
           className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed cursor-pointer text-white font-bold py-2 px-4 rounded-md transition duration-200"
         >
-          {formLoading ? 'Processing...' : loading ? 'Initializing Session...' : !session ? 'Session Failed' : 'Encrypt & Generate Token'}
+          {currentToken ? '✅ Token Generated' : formLoading ? 'Creating Token...' : loading ? 'Initializing Session...' : !session ? 'Session Failed' : '🔐 Generate & Save Card Token'}
         </button>
-      </form>
-
-      {/* SDK Integration Info */}
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-900">
-        <p className="font-semibold mb-2">✅ Real SDK Integration:</p>
-        <ul className="text-xs space-y-1 list-disc list-inside">
-          <li>Backend creates Client Session via Worldline Server API</li>
-          <li>Frontend fetches credentials: {loading ? 'loading...' : session ? '✓ Ready' : '✗ Failed'}</li>
-          <li>Payment products loaded: {paymentProducts.length} available</li>
-          <li>Field validation enabled</li>
-          <li>AES encryption via SDK encryptor</li>
-          <li>Test cards available for demo testing</li>
-        </ul>
-      </div>
-
-      {/* Configuration Display */}
-      <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded text-xs text-gray-700">
-        <p className="font-mono text-gray-600">
-          {paymentContext.countryCode} | {paymentContext.currencyCode} | ${(paymentContext.amount / 100).toFixed(2)} | Test: {import.meta.env.VITE_TEST_MODE === 'true' ? 'ON' : 'OFF'}
-        </p>
       </div>
     </div>
   )

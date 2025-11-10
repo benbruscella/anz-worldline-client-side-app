@@ -111,13 +111,14 @@ app.post('/api/session', async (req, res) => {
 })
 
 // ============================================================================
-// POST /api/process-payment - Process Payment with Worldline
+// POST /api/process-payment - Process Payment with Stored Token
 // ============================================================================
+// Uses the encrypted token (stored in localStorage) to process payment
 
 app.post('/api/process-payment', async (req, res) => {
   try {
     const {
-      encryptedPaymentRequest,
+      cardToken,
       customerId,
       amount,
       currency,
@@ -125,21 +126,20 @@ app.post('/api/process-payment', async (req, res) => {
     } = req.body
 
     // Validate required fields
-    if (!encryptedPaymentRequest || !customerId || !amount || !currency) {
+    if (!cardToken || !customerId || !amount || !currency) {
       return res.status(400).json({
         error: 'Missing required fields',
-        message: 'encryptedPaymentRequest, customerId, amount, and currency are required'
+        message: 'cardToken, customerId, amount, and currency are required'
       })
     }
 
     console.log(`Processing payment: ${currency} $${(amount / 100).toFixed(2)}`)
 
-    // Create payment using SDK
-    // The encryptedPaymentRequest should be passed as encryptedCustomerInput
+    // Create payment using SDK with encrypted card token
     const paymentResponse = await client.payments.createPayment(
       ANZ_WORLDLINE_PSPID,
       {
-        encryptedCustomerInput: encryptedPaymentRequest,
+        encryptedCustomerInput: cardToken,
         order: {
           amountOfMoney: {
             amount: Math.round(amount),
@@ -152,28 +152,78 @@ app.post('/api/process-payment', async (req, res) => {
       }
     )
 
-    console.log('Payment Response:', paymentResponse)
-
     // Handle successful payment
     if (paymentResponse.isSuccess) {
-      const paymentStatus = paymentResponse.body.status
-      console.log(`✅ Payment created: ${paymentResponse.body.id} (Status: ${paymentStatus})`)
+      // SDK returns class instances - use Object.assign to extract all properties
+      const payment = paymentResponse.body.payment
+      const paymentData = Object.assign({}, payment)
 
-      res.json({
-        success: true,
-        paymentId: paymentResponse.body.id,
-        status: paymentStatus,
-        cardNumber: paymentResponse.body.cardPaymentMethodSpecificOutput?.card?.cardNumber || 'N/A'
-      })
+      const paymentId = paymentData.id
+      const paymentStatus = paymentData.status
+
+      console.log(`✅ Payment authorized: ${paymentId} (Status: ${paymentStatus})`)
+
+      // Auto-capture the payment if it's in PENDING_CAPTURE status
+      if (paymentStatus === 'PENDING_CAPTURE') {
+        try {
+          console.log(`⏳ Capturing payment: ${paymentId}`)
+          // Capture with the full authorized amount
+          const captureResponse = await client.payments.capturePayment(
+            ANZ_WORLDLINE_PSPID,
+            paymentId,
+            {
+              amount: paymentData.paymentOutput?.amountOfMoney?.amount
+            }
+          )
+
+          if (captureResponse.isSuccess) {
+            const capturedData = Object.assign({}, captureResponse.body)
+            const capturedStatus = capturedData.status
+            console.log(`✅ Payment captured: ${paymentId} (Status: ${capturedStatus})`)
+
+            res.json({
+              success: true,
+              paymentId: paymentId,
+              status: capturedStatus,
+              cardNumber: capturedData.captureOutput?.cardPaymentMethodSpecificOutput?.card?.cardNumber || 'N/A'
+            })
+          } else {
+            console.error('❌ Payment capture failed')
+            res.json({
+              success: true,
+              paymentId: paymentId,
+              status: 'AUTHORIZED_PENDING_CAPTURE',
+              cardNumber: paymentData.cardPaymentMethodSpecificOutput?.card?.cardNumber || 'N/A',
+              note: 'Payment authorized but capture pending'
+            })
+          }
+        } catch (captureError) {
+          console.error('❌ Capture error:', captureError.message)
+          // Return success even if capture fails - payment is authorized
+          res.json({
+            success: true,
+            paymentId: paymentId,
+            status: 'AUTHORIZED_PENDING_CAPTURE',
+            cardNumber: paymentData.cardPaymentMethodSpecificOutput?.card?.cardNumber || 'N/A'
+          })
+        }
+      } else {
+        res.json({
+          success: true,
+          paymentId: paymentId,
+          status: paymentStatus,
+          cardNumber: paymentData.cardPaymentMethodSpecificOutput?.card?.cardNumber || 'N/A'
+        })
+      }
     }
     // Handle 3D Secure requirement (HTTP 402)
     else if (paymentResponse.status === 402) {
       console.log('⚠️ 3D Secure authentication required')
-      const redirectUrl = paymentResponse.body.authentication?.redirectUrl
+      const redirectUrl = paymentResponse.body.payment?.authentication?.redirectUrl
 
       res.status(402).json({
         requires3DS: true,
-        paymentId: paymentResponse.body.id,
+        paymentId: paymentResponse.body.payment?.id,
         redirectUrl: redirectUrl,
         message: 'Customer authentication required'
       })
@@ -184,8 +234,8 @@ app.post('/api/process-payment', async (req, res) => {
       res.status(400).json({
         success: false,
         error: 'Payment declined or processing failed',
-        status: paymentResponse.body.status || 'FAILED',
-        statusCode: paymentResponse.body.statusCode || paymentResponse.status
+        status: paymentResponse.body.payment?.status || 'FAILED',
+        statusCode: paymentResponse.body.payment?.statusOutput?.statusCode || paymentResponse.status
       })
     }
   } catch (error) {
@@ -198,147 +248,12 @@ app.post('/api/process-payment', async (req, res) => {
   }
 })
 
-// ============================================================================
-// GET /api/payment-status/:paymentId - Get Payment Status
-// ============================================================================
-
-app.get('/api/payment-status/:paymentId', async (req, res) => {
-  try {
-    const { paymentId } = req.params
-
-    if (!paymentId) {
-      return res.status(400).json({
-        error: 'Missing paymentId'
-      })
-    }
-
-    console.log(`Checking payment status: ${paymentId}`)
-
-    // Get payment status from ANZ Worldline
-    const paymentResponse = await client.payments.getPayment(
-      ANZ_WORLDLINE_PSPID,
-      paymentId
-    )
-
-    if (paymentResponse.isSuccess) {
-      const payment = paymentResponse.body
-      console.log(`✅ Payment status: ${payment.status}`)
-
-      res.json({
-        paymentId: payment.id,
-        status: payment.status,
-        amount: payment.order?.amountOfMoney?.amount,
-        currency: payment.order?.amountOfMoney?.currencyCode,
-        createdAt: payment.createdDateUtc
-      })
-    } else {
-      console.error('❌ Failed to get payment status:', paymentResponse.status)
-      res.status(paymentResponse.status).json({
-        error: 'Failed to get payment status',
-        details: paymentResponse.body
-      })
-    }
-  } catch (error) {
-    console.error('❌ Payment status check error:', error.message)
-    res.status(500).json({
-      error: 'Failed to check payment status',
-      message: error.message || error.toString()
-    })
-  }
-})
-
-// ============================================================================
-// GET /api/payment-return - 3D Secure Return Handler
-// ============================================================================
-
-app.get('/api/payment-return', async (req, res) => {
-  try {
-    const { paymentId } = req.query
-
-    if (!paymentId) {
-      return res.json({
-        error: true,
-        message: 'Missing payment ID'
-      })
-    }
-
-    console.log(`Processing 3DS return for payment: ${paymentId}`)
-
-    // Get final payment status after 3DS authentication
-    const paymentResponse = await client.payments.getPayment(
-      ANZ_WORLDLINE_PSPID,
-      paymentId
-    )
-
-    if (paymentResponse.isSuccess) {
-      const status = paymentResponse.body.status
-      console.log(`✅ 3DS return - Payment status: ${status}`)
-
-      // Return payment result as JSON instead of redirect
-      // Frontend can then update UI or redirect to payment result page
-      res.json({
-        success: true,
-        paymentId: paymentId,
-        status: status,
-        message: 'Payment authentication completed'
-      })
-    } else {
-      console.error('❌ Failed to get payment status after 3DS:', paymentResponse.status)
-      res.status(400).json({
-        success: false,
-        error: 'Failed to get payment status after authentication',
-        paymentId: paymentId
-      })
-    }
-  } catch (error) {
-    console.error('❌ 3DS return handler error:', error.message)
-    res.status(500).json({
-      success: false,
-      error: 'Payment return handler error',
-      message: error.message
-    })
-  }
-})
-
-// ============================================================================
-// POST /api/webhook - Worldline Webhook Handler
-// ============================================================================
-
-app.post('/api/webhook', async (req, res) => {
-  try {
-    const { eventType, payment } = req.body
-
-    // Validate webhook (in production, verify Worldline signature)
-    // For now, accept all webhooks
-    if (!payment || !payment.id) {
-      return res.status(400).json({
-        error: 'Invalid webhook payload'
-      })
-    }
-
-    console.log(`Webhook received: ${eventType} for payment ${payment.id}`)
-    console.log(`Payment status: ${payment.status}`)
-
-    // TODO: Update database with payment status
-    // Example: await updatePaymentStatus(payment.id, payment.status)
-
-    res.json({
-      received: true,
-      paymentId: payment.id
-    })
-  } catch (error) {
-    console.error('❌ Webhook processing error:', error.message)
-    res.status(500).json({
-      error: 'Webhook processing failed',
-      message: error.message
-    })
-  }
-})
 
 const PORT = process.env.SERVER_PORT || 3000
 
 app.listen(PORT, () => {
   console.log(`\n🚀 ANZ Worldline Payment Server running on http://localhost:${PORT}`)
-  console.log(`   POST /api/session - Create ANZ Worldline Client Session\n`)
+  console.log(`   POST /api/session - Create ANZ Worldline Client Session`)
+  console.log(`   POST /api/process-payment - Process payment with encrypted token\n`)
 })
 

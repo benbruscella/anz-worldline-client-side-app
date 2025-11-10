@@ -114,22 +114,25 @@ npm run dev
 
 | Component | Purpose |
 |-----------|---------|
-| **[server.js](server.js)** | Express backend - Creates Worldline sessions |
-| **[src/components/PaymentForm.jsx](src/components/PaymentForm.jsx)** | Payment form component |
-| **[src/hooks/useWorldlineSession.js](src/hooks/useWorldlineSession.js)** | React hook - Fetches session credentials |
-| **[src/config/worldlineConfig.js](src/config/worldlineConfig.js)** | SDK config & test cards |
+| **[server.js](server.js)** | Express backend - Creates Worldline sessions & processes payments |
+| **[src/components/CardForm.jsx](src/components/CardForm.jsx)** | Card form - Collects card details and generates encrypted tokens |
+| **[src/components/PaymentHistory.jsx](src/components/PaymentHistory.jsx)** | Payment interface - Displays saved card and processes payments |
+| **[src/hooks/useWorldlineSession.js](src/hooks/useWorldlineSession.js)** | React hook - Fetches session credentials and initializes SDK |
+| **[src/utils/testCards.js](src/utils/testCards.js)** | Test card data and SDK configuration |
 
 ### Project Structure
 
 ```
 src/
 ├── components/
-│   ├── PaymentForm.jsx          # Main payment form
-│   └── TokenLog.jsx             # Token display
+│   ├── CardForm.jsx             # Collect card details & generate tokens
+│   ├── PaymentHistory.jsx       # Display saved card & process payments
+│   └── PaymentStatus.jsx        # Payment result display
 ├── hooks/
 │   └── useWorldlineSession.js   # Session management hook
-├── config/
-│   └── worldlineConfig.js       # Configuration & test cards
+├── utils/
+│   ├── localStorage.js          # Encrypted card storage utility
+│   └── testCards.js             # Test card data & SDK config
 ├── App.jsx                      # Main app
 ├── main.jsx                     # Entry point
 └── index.css                    # Styles
@@ -141,6 +144,8 @@ server.js                        # Express backend
 .gitignore                      # Git ignore rules
 
 README.md                       # This file
+CHANGELOG.md                    # Version history
+CLAUDE.md                       # AI assistant context guide
 package.json                    # Dependencies
 ```
 
